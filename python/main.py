@@ -48,9 +48,8 @@ def parse_read(read, config):
 
 def parse_reads(bam_file, config, outdir):
     """ Extract info from reads """
-    print(bam_file)
     samfile = pysam.AlignmentFile(bam_file, "rb", check_sq=False)# @UndefinedVariable
-    out_prefix=outdir+Path('/root/dir/sub/file.ext').stem
+    out_prefix=outdir+Path(bam_file).stem
     stats=Counter()
     stats['umi', 'pass']=set()
     mean_aln_score_filtered, mean_aln_score_pass=list(), list()

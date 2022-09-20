@@ -16,9 +16,9 @@ from utils import *
 
 def parse_read(read, config):
     read.query_sequence
-    anchor_seq=get_config('anchor_seq', config)
-    umi_len=get_config('umi_len', config)
-    srbc_len=get_config('srbc_len', config)
+    anchor_seq=get_config(config, ['demux_param', 'anchor_seq'], required=True)
+    umi_len=get_config(config,['demux_param','umi_len'], required=True)
+    srbc_len=get_config(config,['demux_param','srbc_len'], required=True)
     aln = pairwise2.align.globalxs( # globalxs(sequenceA, sequenceB, open, extend) -> alignments
             anchor_seq, 
             read.query_sequence, 
@@ -29,7 +29,7 @@ def parse_read(read, config):
             one_alignment_only=True)[0]
     _, _, aln_score, _, _ = aln
     aln_score=aln_score/len(anchor_seq)
-    if aln_score < get_config('min_aln_score', config, 0.9):
+    if aln_score < get_config(config,['demux_param','min_aln_score'], 0.9):
         return True, read, aln_score, None, None
     # get pos in read
     start=len(aln[0])-len(aln[0].lstrip('-'))
@@ -39,7 +39,7 @@ def parse_read(read, config):
     umi=read.query_sequence[start-srbc_len-umi_len:start-srbc_len]
     query_sequence=read.query_sequence[end:]
     query_qualities=read.query_qualities[end:]
-    if len(query_sequence)<get_config('min_read_len', config, 22):
+    if len(query_sequence)<get_config(config,['demux_param','min_read_len'], 22):
         return True, read, aln_score, None, None # filter if remaining read too short
     read.query_sequence = query_sequence
     read.query_qualities = query_qualities

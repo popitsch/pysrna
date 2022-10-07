@@ -45,6 +45,8 @@ def build_transcriptome_section(anno_file, anno_fmt, genome_fa, main_feature, am
     written_fa=set()  
     for gtf_line in tqdm.tqdm(pysam.TabixFile(anno_file, mode="r").fetch(parser=pysam.asTuple())): # @UndefinedVariable
         fchrom,fstart,fend,info=gtf_line[0], int(gtf_line[3])-1, int(gtf_line[4]),parse_info(gtf_line[8], fmt=anno_fmt)
+        if fchrom not in ampcoords:
+            continue # skip as gtf chrom not in genome
         gi=next(iter(ampcoords[fchrom][fstart:fend])) # get amplicon interval (genomic coords)
         ampstart, ampend, ampchrom=gi.begin, gi.end, gi.data
         offset=padding+(fstart-ampstart)+1

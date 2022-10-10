@@ -186,7 +186,7 @@ def build_transcriptome(name, config, outdir, config_prefix=[]):
     print("GFF3 file:\t"+out_file_gff3)
     print("TSV file:\t"+out_file_feature_meta)
     
-def parse_read(query_name, query_sequence, query_qualities, config, config_prefix=[]):
+def parse_read(query_name, query_sequence, query_qualities, config, config_prefix=[], expected_srbc=None):
     """ Parse single reads """
     anchor_seq=get_config(config, config_prefix+['anchor_seq'], required=True)
     umi_len=get_config(config, config_prefix+['umi_len'], required=True)
@@ -216,25 +216,37 @@ def parse_read(query_name, query_sequence, query_qualities, config, config_prefi
     trimmed_query_sequence=query_sequence[:start_umi]
     trimmed_query_qualities=query_qualities[:start_umi]
     if len(trimmed_query_sequence)<get_config(config,config_prefix+['min_read_len'], 22):
-        return True, query_name, query_sequence, query_qualities, aln_score, None, None, 'too_short' # filter if remaining read too short
+        return True, query_name, query_sequence, query_qualities, aln_score, umi, srbc, 'too_short' # filter if remaining read too short
+    if (expected_srbc is not None) and (srbc!=expected_srbc):
+        return True, query_name, query_sequence, query_qualities, aln_score, umi, srbc, 'wrong_srbc' # filter if srbc is not matching expectation
     trimmed_query_name='_'.join([query_name, srbc, umi])
     return False, trimmed_query_name, trimmed_query_sequence, trimmed_query_qualities, aln_score, umi, srbc, None
 
 def parse_reads(dat_file, config, outdir, config_prefix=[]):
     """ Extract info from reads """
-    out_prefix=outdir+Path(dat_file).stem
+    sample_name=Path(dat_file[:-3]).stem if dat_file.endswith('.gz') else Path(dat_file).stem
+    out_prefix=outdir+sample_name
+    filter_wrong_srbc= get_config(config, config_prefix+['filter_wrong_srbc'], required=True)
+    if filter_wrong_srbc:
+        sample_sheet=pd.read_csv(get_config(config, ['sample_sheet'], required=True), sep='\t')
+        srbcs={k:v for k,v in zip(sample_sheet['filename_prefix'],sample_sheet['sRBC']) }
+        expected_srbc = srbcs[sample_name]
+    else:
+        expected_srbc=None
+        srbcs=None
     stats=Counter()
     stats['umi', 'pass']=set()
+    srbc_stats=Counter()
     mean_aln_score_filtered, mean_aln_score_pass=list(), list()
     with open(out_prefix+'.filtered.fq', 'w') as fq_filtered:
-        with open(out_prefix+'.fq', 'w') as fq_pass:
+        with open(out_prefix+'.pass.fq', 'w') as fq_pass:
             if dat_file.endswith(".fastq.gz") or dat_file.endswith(".fq.gz"):
                 with gzip.open(dat_file, 'r') as in1:
                     it1=grouper(in1, 4, '')
                     for read in tqdm.tqdm(it1):
                         query_name, query_sequence, _, query_qualities = [x.decode("utf-8").strip() for x in read]
                         query_name=query_name[1:] # remove '@' prefix
-                        filtered, query_name, query_sequence, query_qualities, aln_score, umi, srbc, filter_str=parse_read(query_name, query_sequence, query_qualities, config, config_prefix=config_prefix)
+                        filtered, query_name, query_sequence, query_qualities, aln_score, umi, srbc, filter_str=parse_read(query_name, query_sequence, query_qualities, config, config_prefix=config_prefix, expected_srbc=expected_srbc)
                         if filtered:                    
                             out=fq_filtered 
                             stats['read_count', 'filtered']+=1    
@@ -244,17 +256,22 @@ def parse_reads(dat_file, config, outdir, config_prefix=[]):
                             out=fq_pass          
                             stats['read_count', 'pass']+=1           
                             stats['umi', 'pass'].add(umi)           
-                            stats['srbc', srbc]+=1
                             mean_aln_score_pass.append(aln_score)                
                         print('@%s\n%s\n+\n%s' % (query_name,
                                                   query_sequence, 
                                                   query_qualities if query_qualities is not None else '???'), 
                                                   file=out)
+                        srbc_stats[
+                            'NA' if srbc is None else srbc,
+                            '1' if filtered else '0',
+                            'NA' if expected_srbc is None else '1' if srbc==expected_srbc else '0',
+                            'NA' if srbcs is None else '1' if srbc in srbcs.values() else '0'
+                            ]+=1
             elif dat_file.endswith(".bam"):# unaligned BAM file inpiut
                 samfile = pysam.AlignmentFile(dat_file, "rb", check_sq=False)# @UndefinedVariable
                 for read in tqdm.tqdm(samfile.fetch(until_eof=True)):
                     query_name, query_sequence, query_qualities = read.query_name, read.query_sequence, read.query_qualities
-                    filtered, query_name, query_sequence, query_qualities, aln_score, umi, srbc, filter_str=parse_read(query_name, query_sequence, query_qualities, config, config_prefix=config_prefix)
+                    filtered, query_name, query_sequence, query_qualities, aln_score, umi, srbc, filter_str=parse_read(query_name, query_sequence, query_qualities, config, config_prefix=config_prefix, expected_srbc=expected_srbc)
                     if filtered:                    
                         out=fq_filtered 
                         stats['read_count', 'filtered']+=1    
@@ -264,12 +281,17 @@ def parse_reads(dat_file, config, outdir, config_prefix=[]):
                         out=fq_pass          
                         stats['read_count', 'pass']+=1           
                         stats['umi', 'pass'].add(umi)           
-                        stats['srbc', srbc]+=1
                         mean_aln_score_pass.append(aln_score)                
                     print('@%s\n%s\n+\n%s' % (query_name,
                                               query_sequence, 
                                               ''.join(map(lambda x: chr( x+33 ), query_qualities)) if query_qualities is not None else '???'), 
                                               file=out)
+                    srbc_stats[
+                            'NA' if srbc is None else srbc,
+                            '1' if filtered else '0',
+                            'NA' if expected_srbc is None else '1' if srbc==expected_srbc else '0',
+                            'NA' if srbcs is None else '1' if srbc in srbcs.values() else '0'
+                            ]+=1
                 samfile.close()
             else:
                 print("ERR: Unknown input file format for file %s" % dat_file)
@@ -281,6 +303,10 @@ def parse_reads(dat_file, config, outdir, config_prefix=[]):
         print('\t'.join(['category', 'key', 'value']), file=out)
         for a,b in stats:
             print('\t'.join([str(x) for x in [a,b,stats[a,b]]]), file=out)
+    with open(out_prefix+'.srbc_stats.tsv', 'w') as out:
+        print('\t'.join(['srbc', 'filtered', 'expected', 'known']), file=out)
+        for (a,b,c,d),e in srbc_stats.items():
+            print('\t'.join([str(x) for x in [a,b,c,d,e]]), file=out)
     print("all done.")
 
 def fix_tailor_bam(bam_file, outdir):

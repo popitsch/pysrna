@@ -34,7 +34,6 @@ load_table = function(dataF, append="", header=T, nrows=Inf, skip=0, colClasses=
                  colClasses=colClasses))
   }
 }
-
 # multiple plots with single title
 my_plot_grid = function(..., main=NULL) {
   plot_row=plot_grid(...)
@@ -42,17 +41,20 @@ my_plot_grid = function(..., main=NULL) {
   return (plot_grid(title, plot_row, ncol = 1, rel_heights = c(0.1, 1)))
 }
 
+
 # load data
 build_dataset = function(sample_sheet, config, results_dir) {
   parsed_read_stats=list()
   counted_read_stats=list()
+  srbc_stats=list()
   cnt=list()
   iso=list()
   tai=list()
   sc=list()
   for ( s in sample_sheet %>% pull(sample_name)) {
-    fn=paste0('Hen1#', sample_sheet %>% filter(sample_name==s) %>% pull(fn))
+    fn=sample_sheet %>% filter(sample_name==s) %>% pull(filename_prefix)
     parsed_read_stats[[s]] = load_table(paste0(results_dir, '/parsed_reads/',fn, '.stats.tsv.gz'))
+    srbc_stats[[s]] = load_table(paste0(results_dir, '/parsed_reads/',fn, '.srbc_stats.tsv.gz'))
     sc[[s]] = load_table(paste0(results_dir, '/spikein_counts/', fn, '_trimmed.fq.counts_spikein.tsv'))
     cnt[[s]] = load_table(paste0(results_dir, '/counts/', fn, '.counts.tsv')) %>% 
       left_join( load_table(paste0(results_dir, '/counts/', fn, '.meta.tsv')), by=c('gene_id', 'type') )
@@ -65,13 +67,16 @@ build_dataset = function(sample_sheet, config, results_dir) {
   }
   parsed_read_stats = parsed_read_stats %>% 
     bind_rows(.id='sample_name') %>% 
-    mutate(sample_name=factor(sample_name, levels=!!sample_names))
+    mutate(sample_name=factor(sample_name, levels=levels(sample_sheet$sample_name)))
   counted_read_stats = counted_read_stats %>% 
     bind_rows(.id='sample_name') %>% 
-    mutate(sample_name=factor(sample_name, levels=!!sample_names))
+    mutate(sample_name=factor(sample_name, levels=levels(sample_sheet$sample_name)))
+  srbc_stats = srbc_stats%>% 
+    bind_rows(.id='sample_name') %>% 
+    mutate(sample_name=factor(sample_name, levels=levels(sample_sheet$sample_name)))
   sc = sc %>% 
     bind_rows(.id='sample_name') %>% 
-    mutate(sample_name=factor(sample_name, levels=!!sample_names)) %>% 
+    mutate(sample_name=factor(sample_name, levels=levels(sample_sheet$sample_name))) %>% 
     left_join(load_table(conf$spikein_param$spikein_meta), by='si_name') %>% 
     mutate(methylated=ifelse(grepl('mX',si_name, fixed = TRUE), 'yes', 'no' )) %>% 
     left_join(sample_sheet, by='sample_name') 
@@ -82,23 +87,24 @@ build_dataset = function(sample_sheet, config, results_dir) {
   d[['sample_sheet']] = sample_sheet
   d[['cnt']] = cnt %>% 
     bind_rows(.id='sample_name') %>% 
-    mutate(sample_name=factor(sample_name, levels=!!sample_names)) %>% 
+    mutate(sample_name=factor(sample_name, levels=levels(sample_sheet$sample_name))) %>% 
     left_join(sample_sheet, by='sample_name') %>% 
     mutate(frac_tailed=reads_tailed/reads,
            frac_tailed_norm=reads_tailed_norm/reads_norm,
            frac_invalid=reads_invalid/(reads+reads_invalid))
   d[['iso']] = iso %>% 
     bind_rows(.id='sample_name') %>% 
-    mutate(sample_name=factor(sample_name, levels=!!sample_names)) %>% 
+    mutate(sample_name=factor(sample_name, levels=levels(sample_sheet$sample_name))) %>% 
     left_join(sample_sheet, by='sample_name')
   d[['tai']] = tai %>% 
     bind_rows(.id='sample_name') %>% 
-    mutate(sample_name=factor(sample_name, levels=!!sample_names)) %>% 
+    mutate(sample_name=factor(sample_name, levels=levels(sample_sheet$sample_name))) %>% 
     left_join(sample_sheet, by='sample_name') %>% 
     mutate(tail_len=nchar(tail)) 
   d[['sc']] = sc
   d[['parsed_read_stats']]=parsed_read_stats
   d[['counted_read_stats']]=counted_read_stats
+  d[['srbc_stats']]=srbc_stats
   return (d)
 }
 
@@ -133,32 +139,32 @@ if (!dir.exists(outdir)) {
 
 conf=fromJSON(paste(readLines(srna_config), collapse=""))
 
-sample_sheet = load_table(conf$sample_sheet) 
+sample_sheet = load_table(conf$sample_sheet) %>% 
+  mutate(sample_name=factor(sample_name, levels = unique(sample_name)))
 d = build_dataset(sample_sheet, conf, resultsdir)
 
 data_file=paste0(outdir,'/data.rds')
 saveRDS(d, data_file, compress = FALSE)
 print(paste0("Done. Load data via d=readRDS(data_file.rds)"))
-
-
 # ===============================================================
 # Filtering stats
 # ===============================================================
-p1 = tab %>% 
+p1 = d$parsed_read_stats %>% 
   group_by(sample_name) %>% 
   filter(category=='read_count') %>% 
   left_join(sample_sheet %>% select(sample_name, raw_reads), by='sample_name') %>% 
   mutate(frac=value/raw_reads) %>% 
   ggplot(aes(key, frac, fill=key)) +
   geom_col() +
-  scale_fill_manual( values = c( "pass"="darkgreen", "filtered"="red" ), guide = "none" ) +
+  scale_fill_manual( values = c( "pass"="darkgreen", "filtered"="red", 
+                                 "wrong_srbc"="grey", "too_short"="grey", "no_adapter"="grey"  ), guide = "none" ) +
   facet_wrap(sample_name~.) +
   ylim(0,1) + xlab("") + ylab("") +
   coord_flip() + 
   ggtitle("Filtering stats")
 
 known_srbcs=sample_sheet %>% pull(sRBC)
-p2 = tab %>% 
+p2 = d$parsed_read_stats %>% 
   filter(category=='srbc') %>% 
   left_join(sample_sheet %>% select(sample_name, sRBC, raw_reads), by='sample_name') %>% 
   group_by(sample_name) %>% 
@@ -197,3 +203,4 @@ p4 = d$counted_read_stats %>%
 
 my_plot_grid(p1,p2,p3,p4, labels=c('A','B','C','D'), main='Filter statistics')
 ggsave(paste0(outdir,'/qc_pipeline_filtering_stats.pdf'), width=12, height=9)
+

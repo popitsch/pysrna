@@ -35,6 +35,14 @@ load_table = function(dataF, append="", header=T, nrows=Inf, skip=0, colClasses=
   }
 }
 
+# multiple plots with single title
+my_plot_grid = function(..., main=NULL) {
+  plot_row=plot_grid(...)
+  title <- ggdraw() + draw_label( main, fontface = 'bold', x = 0, hjust = 0 ) + theme(plot.margin = margin(0, 0, 0, 7))
+  return (plot_grid(title, plot_row, ncol = 1, rel_heights = c(0.1, 1)))
+}
+
+# load data
 build_dataset = function(sample_sheet, config, results_dir) {
   parsed_read_stats=list()
   counted_read_stats=list()
@@ -94,8 +102,9 @@ build_dataset = function(sample_sheet, config, results_dir) {
   return (d)
 }
 
-
-# args
+# ===============================================================
+# MAIN
+# ===============================================================
 args = commandArgs(trailingOnly=TRUE)
 if (length(args)<1 | length(args)>3) {
   stop("usage: srna_qc.R <config> [<outdir>] [<resultsdir>]", call.=FALSE)
@@ -130,3 +139,61 @@ d = build_dataset(sample_sheet, conf, resultsdir)
 data_file=paste0(outdir,'/data.rds')
 saveRDS(d, data_file, compress = FALSE)
 print(paste0("Done. Load data via d=readRDS(data_file.rds)"))
+
+
+# ===============================================================
+# Filtering stats
+# ===============================================================
+p1 = tab %>% 
+  group_by(sample_name) %>% 
+  filter(category=='read_count') %>% 
+  left_join(sample_sheet %>% select(sample_name, raw_reads), by='sample_name') %>% 
+  mutate(frac=value/raw_reads) %>% 
+  ggplot(aes(key, frac, fill=key)) +
+  geom_col() +
+  scale_fill_manual( values = c( "pass"="darkgreen", "filtered"="red" ), guide = "none" ) +
+  facet_wrap(sample_name~.) +
+  ylim(0,1) + xlab("") + ylab("") +
+  coord_flip() + 
+  ggtitle("Filtering stats")
+
+known_srbcs=sample_sheet %>% pull(sRBC)
+p2 = tab %>% 
+  filter(category=='srbc') %>% 
+  left_join(sample_sheet %>% select(sample_name, sRBC, raw_reads), by='sample_name') %>% 
+  group_by(sample_name) %>% 
+  mutate(true_srbc=case_when(key==sRBC~'true',key %in% known_srbcs~'known', TRUE ~'other')) %>% 
+  mutate(total=sum(value)) %>% 
+  group_by(sample_name, true_srbc, total) %>% 
+  summarise(share=sum(value)) %>% 
+  ungroup() %>% 
+  mutate(frac=share/total) %>% 
+  ggplot(aes(true_srbc, frac, fill=true_srbc)) +
+  geom_col() +
+  scale_fill_manual( values = c( "true"="darkgreen", "other"="red" ), guide = "none" ) +
+  facet_wrap(sample_name~.)+
+  ylim(0,1) + xlab("") + ylab("") +
+  coord_flip() + 
+  ggtitle("Fraction of reads with true, known or unknown (other sequence) sRBC 5-mer")
+
+p3 = d$counted_read_stats %>% 
+  left_join(sample_sheet, by='sample_name') %>% 
+  pivot_wider(names_from='key', values_from='value') %>% 
+  mutate(frac=counted_reads/mapped_reads) %>% 
+  ggplot(aes(sample_name,frac, fill=genotype)) +
+  geom_col(position = 'dodge') +
+  #scale_fill_manual( values = c( "NaIO4_oxidized"="darkgreen" ), guide = "none" ) +
+  xlab("") + ylab("") +
+  coord_flip() + 
+  ggtitle("Fraction of mapped-reads assigned to pri_miRNA annotations")
+
+p4 = d$counted_read_stats %>% 
+  left_join(sample_sheet, by='sample_name') %>% 
+  filter(key %in% c('counted_reads')) %>% 
+  ggplot(aes(sample_name,value, fill=genotype)) +
+  geom_col() + xlab("") + ylab("") +
+  coord_flip() + 
+  ggtitle("Raw numbers of pri_miRNA assigned reads")
+
+my_plot_grid(p1,p2,p3,p4, labels=c('A','B','C','D'), main='Filter statistics')
+ggsave(paste0(outdir,'/qc_pipeline_filtering_stats.pdf'), width=12, height=9)

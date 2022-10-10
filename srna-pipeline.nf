@@ -14,7 +14,7 @@ log.info "\n"
  */
 data_input = Channel
     .fromPath( params.data)
-    .ifEmpty { exit 1, "Cannot find any BAMs matching: ${params.bams}" }
+    .ifEmpty { exit 1, "Cannot find any BAM/FASTQs matching: ${params.data}" }
     .map { file -> tuple(file.baseName, file) }
 
 /*
@@ -31,16 +31,18 @@ process parse_reads {
 	input: 
 		set name, file(dat) from data_input
 	output: 
-		set name, file("${name}.fq.gz") into parsed_fq
+		set name, file("${name}.pass.fq.gz") into parsed_fq
 		set name, file("${name}.filtered.fq.gz") into parsed_fq_filtered
 		set name, file("${name}.stats.tsv.gz") into parsed_fq_stats
+		set name, file("${name}.srbc_stats.tsv.gz") into parsed_fq_stats_srbc
 		set file("*_fastqc*") into parsed_fqc
 	script:
     """
 		${params.cmd.main_cmd} parse_reads --config ${params.config_file} --config_prefix demux_param --dat ${dat} --out .
-		gzip ${name}.fq
+		gzip ${name}.pass.fq
 		gzip ${name}.filtered.fq
 		gzip ${name}.stats.tsv
+		gzip ${name}.srbc_stats.tsv
 		fastqc ${name}.fq.gz
 		fastqc ${name}.filtered.fq.gz
     """
@@ -206,11 +208,11 @@ process extract_unmapped_reads {
 	script:
 	"""
 		# print out mapped headers
-		samtools view -F 4 ${bam} | awk '{ print "@"\$1 }' | sort -u > mapped.txt
+		samtools view -F 4 ${bam} | awk '{ print "@"\$1 }' | sort -u -k 1b,1 > mapped.txt
 		# grap only the fq headers.
-		zcat ${fqz} | awk '(NR % 4 == 1)' |  sort -u > reads.txt
+		zcat ${fqz} | awk '(NR % 4 == 1)' |  sort -u -k 1b,1 > reads.txt
 		# join and print only un-paired (-v)
-		join -v 1 reads.txt mapped.txt > unmapped.txt
+		join --nocheck-order -v 1 reads.txt mapped.txt > unmapped.txt
 		# print stats
 		wc -l mapped.txt unmapped.txt > ${name}_unmapped_sample.stats.txt
 		# create fastq
@@ -239,6 +241,29 @@ process count_reads {
 	"""
 }
 
+
+
+
+/*
+ * qc results
+ */
+process qc_results {
+    cpus 1
+    module 'r/4.0.2-foss-2018b'
+    publishDir "results/", mode: 'copy'
+	when:
+		params.calc_qc
+    input:
+    	file ("*") from read_counts.collect()
+    output:
+    	file("data.rds") into results
+    	file("qc_plots/*pdf") into qc_plots
+    script:
+	    """
+	    	${params.cmd.qc_cmd} ${params.config_file} . 
+    		mkdir qc_plots && mv *.pdf qc_plots
+		"""
+}
 
 
 

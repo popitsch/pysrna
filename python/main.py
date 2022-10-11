@@ -17,7 +17,7 @@ from pathlib import Path
 from itertools import zip_longest
 from utils import *
 
-def build_transcriptome_section(anno_file, anno_fmt, genome_fa, main_feature, amp_extension, padding, out_file_fa, out_fa, out_fa_chrsize, out_fa_dict, out_gff3):
+def build_transcriptome_section(anno_file, anno_fmt, genome_fa, main_feature, gene_name, amp_extension, padding, out_file_fa, out_fa, out_fa_chrsize, out_fa_dict, out_gff3):
     """ Builds transcriptome from the passed genome/gtf and writes a GFF file"""
     # create dict feature_chrom: (amplicon_start, amplicon_end, amplicon_name) from main features (to avoid long names)
     genome = pysam.FastaFile(genome_fa) # @UndefinedVariable
@@ -32,7 +32,7 @@ def build_transcriptome_section(anno_file, anno_fmt, genome_fa, main_feature, am
             ampstart=max(1,fstart-amp_extension)
             ampend=fend+amp_extension
             # new chrom name
-            ampchrom=info['Name'].lower() if 'Name' in info else fchrom+"_"+str(fstart+1)+"_"+str(fend)
+            ampchrom=info[gene_name].lower() if gene_name in info else fchrom+"_"+str(fstart+1)+"_"+str(fend)
             while ampchrom in ampchrom_names: # make sure that there are no name collisions!
                 ampchrom=ampchrom+'_1'                
             if fchrom not in ampcoords:
@@ -157,7 +157,7 @@ def build_transcriptome(name, config, outdir, config_prefix=[]):
                             if gene_id in info:
                                 print('\t'.join([info[gene_id], gtf_line[2]]), file=out_feature_meta)
                         # build transcriptome GTF file
-                        build_transcriptome_section(gene_anno_file, gene_anno_fmt, genome_fa, main_feature, amp_extension, padding, out_file_fa, out_fa, out_fa_chrsize, out_fa_dict, out_gff3)
+                        build_transcriptome_section(gene_anno_file, gene_anno_fmt, genome_fa, main_feature, gene_name, amp_extension, padding, out_file_fa, out_fa, out_fa_chrsize, out_fa_dict, out_gff3)
                         # add tsv/gtf info for spikeins
                         if spikein_fa is not None:
                             out_file_spikeins_anno=outdir+'/'+Path(spikein_fa).stem+('.gtf' if gene_anno_fmt is 'GTF' else '.gff3')
@@ -175,7 +175,7 @@ def build_transcriptome(name, config, outdir, config_prefix=[]):
                                     print('\t'.join([spikein_chr, 'spikein']), file=out_feature_meta)
                             sort_bgzip_and_tabix(out_file_spikeins_anno, seq_col=0, start_col=3, end_col=4, line_skip=0, zerobased=False)
                             out_file_spikeins_anno=out_file_spikeins_anno+'.gz'
-                            build_transcriptome_section(out_file_spikeins_anno, gene_anno_fmt, spikein_fa, main_feature, 0, padding, out_file_fa, out_fa, out_fa_chrsize, out_fa_dict, out_gff3)
+                            build_transcriptome_section(out_file_spikeins_anno, gene_anno_fmt, spikein_fa, main_feature, gene_name, 0, padding, out_file_fa, out_fa, out_fa_chrsize, out_fa_dict, out_gff3)
     # compress + index output files            
     sort_bgzip_and_tabix(out_file_gff3, seq_col=0, start_col=3, end_col=4, line_skip=0, zerobased=False)
     pysam.faidx(out_file_fa)# @UndefinedVariable    
@@ -304,7 +304,7 @@ def parse_reads(dat_file, config, outdir, config_prefix=[]):
         for a,b in stats:
             print('\t'.join([str(x) for x in [a,b,stats[a,b]]]), file=out)
     with open(out_prefix+'.srbc_stats.tsv', 'w') as out:
-        print('\t'.join(['srbc', 'filtered', 'expected', 'known']), file=out)
+        print('\t'.join(['srbc', 'filtered', 'expected', 'known', 'count']), file=out)
         for (a,b,c,d),e in srbc_stats.items():
             print('\t'.join([str(x) for x in [a,b,c,d,e]]), file=out)
     print("all done.")

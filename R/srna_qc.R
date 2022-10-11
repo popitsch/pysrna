@@ -105,6 +105,7 @@ build_dataset = function(sample_sheet, config, results_dir) {
   d[['parsed_read_stats']]=parsed_read_stats
   d[['counted_read_stats']]=counted_read_stats
   d[['srbc_stats']]=srbc_stats
+  d[['config']]=config
   return (d)
 }
 
@@ -152,7 +153,7 @@ print(paste0("Done. Load data via d=readRDS(data_file.rds)"))
 p1 = d$parsed_read_stats %>% 
   group_by(sample_name) %>% 
   filter(category=='read_count') %>% 
-  left_join(sample_sheet %>% select(sample_name, raw_reads), by='sample_name') %>% 
+  left_join(d$sample_sheet %>% select(sample_name, raw_reads), by='sample_name') %>% 
   mutate(frac=value/raw_reads) %>% 
   ggplot(aes(key, frac, fill=key)) +
   geom_col() +
@@ -161,46 +162,60 @@ p1 = d$parsed_read_stats %>%
   facet_wrap(sample_name~.) +
   ylim(0,1) + xlab("") + ylab("") +
   coord_flip() + 
-  ggtitle("Filtering stats")
+  ggtitle("Filtering statistics (fractions)")
 
-known_srbcs=sample_sheet %>% pull(sRBC)
-p2 = d$parsed_read_stats %>% 
-  filter(category=='srbc') %>% 
-  left_join(sample_sheet %>% select(sample_name, sRBC, raw_reads), by='sample_name') %>% 
-  group_by(sample_name) %>% 
-  mutate(true_srbc=case_when(key==sRBC~'true',key %in% known_srbcs~'known', TRUE ~'other')) %>% 
-  mutate(total=sum(value)) %>% 
-  group_by(sample_name, true_srbc, total) %>% 
-  summarise(share=sum(value)) %>% 
-  ungroup() %>% 
-  mutate(frac=share/total) %>% 
-  ggplot(aes(true_srbc, frac, fill=true_srbc)) +
-  geom_col() +
-  scale_fill_manual( values = c( "true"="darkgreen", "other"="red" ), guide = "none" ) +
-  facet_wrap(sample_name~.)+
-  ylim(0,1) + xlab("") + ylab("") +
-  coord_flip() + 
-  ggtitle("Fraction of reads with true, known or unknown (other sequence) sRBC 5-mer")
-
-p3 = d$counted_read_stats %>% 
-  left_join(sample_sheet, by='sample_name') %>% 
-  pivot_wider(names_from='key', values_from='value') %>% 
-  mutate(frac=counted_reads/mapped_reads) %>% 
-  ggplot(aes(sample_name,frac, fill=genotype)) +
+p2 = d$counted_read_stats %>% 
+  left_join(d$sample_sheet, by='sample_name') %>% 
+  ggplot(aes(sample_name,value, fill=key)) +
   geom_col(position = 'dodge') +
   #scale_fill_manual( values = c( "NaIO4_oxidized"="darkgreen" ), guide = "none" ) +
-  xlab("") + ylab("") +
+  ylab("") + xlab("") +
+  scale_y_log10() +
   coord_flip() + 
-  ggtitle("Fraction of mapped-reads assigned to pri_miRNA annotations")
+  ggtitle("Raw counts per genotype", "More alignments than reads due to multimappers")
 
-p4 = d$counted_read_stats %>% 
-  left_join(sample_sheet, by='sample_name') %>% 
+p3 = d$counted_read_stats %>% 
+  left_join(d$sample_sheet, by='sample_name') %>% 
   filter(key %in% c('counted_reads')) %>% 
   ggplot(aes(sample_name,value, fill=genotype)) +
   geom_col() + xlab("") + ylab("") +
   coord_flip() + 
-  ggtitle("Raw numbers of pri_miRNA assigned reads")
+  ggtitle("Raw numbers of mapped-reads per sample")
 
-my_plot_grid(p1,p2,p3,p4, labels=c('A','B','C','D'), main='Filter statistics')
-ggsave(paste0(outdir,'/qc_pipeline_filtering_stats.pdf'), width=12, height=9)
+p4 = d$parsed_read_stats %>% 
+  filter(category=='mean_aln_score') %>% 
+  ggplot(aes(key, value, col=sample_name, group=key)) +
+  geom_boxplot() +
+  geom_jitter() + xlab("") + ylab("") + 
+  ggtitle("Mean adapter alignment scores", "Dashed line is minimum filter threshold") +
+  geom_hline(yintercept = conf$demux_param$min_aln_score, col='black', linetype='dotted')
+
+p5 = d$srbc_stats %>% 
+  group_by(sample_name, filtered, expected, known) %>% 
+  summarise(tot=sum(count)) %>% 
+  mutate(cat=case_when(
+    expected==1 ~ 'true',
+    expected==0 & known==1 ~ 'known',
+    TRUE ~ 'other'
+  )) %>% 
+  ggplot(aes(sample_name, tot, fill=cat)) + 
+  geom_col() +
+  facet_wrap(ifelse(filtered==1,'filtered','pass')~.) +
+  coord_flip() + 
+  xlab("") + ylab("") +
+  ggtitle("sRBC statistics for filtered/pass reads")
+  
+p6 = d$sc %>% 
+  ggplot(aes(si_conc, si_counts, col=sample_name, group=sample_name)) +
+  geom_point() +
+  geom_line() +
+  #geom_smooth(method='lm',se = FALSE) +
+  facet_wrap(paste0('methylated: ',methylated)~., scales = 'free_x')+
+  scale_x_log10() +
+  scale_y_log10() +
+  ggtitle("Target concentrations vs read counts for spike-in sequences") +
+  xlab("Spike-in input concentration") + ylab("Read counts")
+
+my_plot_grid(p1,p2,p3,p4,p5,p6, labels=c('A','B','C','D','E','F'), main='Small RNA pipeline filter statistics', ncol=2)
+ggsave(paste0(outdir,'/qc_pipeline_filtering_stats.pdf'), width=14, height=9)
 

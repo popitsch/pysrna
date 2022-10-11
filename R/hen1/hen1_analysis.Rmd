@@ -1,0 +1,717 @@
+---
+title: "srna_qc"
+author: "niko.popitsch"
+date: "09/2022"
+documentclass: article
+fontsize: 10pt
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    fig_width: 14
+    fig_height: 10
+    fig_caption: true
+    df_print: paged
+  pdf_document:
+    fig_width: 12
+    fig_height: 10
+    fig_caption: true
+params:
+    data_file:
+      value: "/Volumes/groups/ameres/Niko/projects/Cochella/Hen1/results/data.rds"
+    out_dir:
+       value: "/Volumes/groups/ameres/Niko/projects/Cochella/Hen1/results/analysis/"
+---
+
+<style type="text/css">
+body, td {
+   font-size: 10px;
+}
+code.r{
+  font-size: 10px;
+}
+pre {
+  font-size: 10px
+}
+div.blue pre { background-color:lightblue; }
+div.blue pre.r { background-color:blue; }
+</style>
+
+# Init
+```{r}
+require(data.table)
+require(dplyr)
+require(tidyr)
+require(ggplot2)
+require(stringr)
+require(cowplot)
+require(readr)
+require(testthat)
+require(tidylog)
+require(glue)
+require(rtracklayer)
+require(tximport)
+require(DESeq2)
+require(tibble)
+library(broom)
+require(ggpmisc)
+
+count=dplyr::count
+select=dplyr::select
+
+# load data from TSV. Supports gzipped files
+load_table = function(dataF, append="", header=T, nrows=Inf, skip=0, colClasses=NULL) {
+  dataF = as.character(paste0(dataF, append))
+  print(paste("Loading", dataF))
+  if ( endsWith(dataF, ".gz") ) {
+    return(fread(cmd=paste('gunzip -c', dataF), header=header, sep="\t", skip=skip, na.strings=c("na","NA",".", "None"), nrows=nrows, colClasses=colClasses))
+  } else {
+    return(fread(dataF, header=header, sep="\t", skip=skip, na.strings=c("na","NA",".", "None"), nrows=nrows,
+                  colClasses=colClasses))
+  }
+}
+
+# helper to plot a correlation
+plot_corr=function(tab, a, b, c, s=NULL, alpha=NULL) {
+  tab %>% 
+    ggplot(aes_string(a, b, col=c, shape=s, alpha=alpha)) +
+    geom_point() +
+    scale_x_log10() +
+    scale_y_log10() +
+    geom_abline(slope=1, intercept = 0, linetype='dotted')
+}
+
+# multiple plots with single title
+my_plot_grid = function(..., main=NULL) {
+  plot_row=plot_grid(...)
+  title <- ggdraw() + draw_label( main, fontface = 'bold', x = 0, hjust = 0 ) + theme(plot.margin = margin(0, 0, 0, 7))
+  return (plot_grid(title, plot_row, ncol = 1, rel_heights = c(0.1, 1)))
+}
+
+```
+# Data
+```{r}
+
+d = readRDS(params$data_file)
+
+
+```
+
+# QC
+
+
+### Filtering stats
+```{r}
+p1 = d$parsed_read_stats %>% 
+  group_by(sample_name) %>% 
+  filter(category=='read_count') %>% 
+  left_join(d$sample_sheet %>% select(sample_name, raw_reads), by='sample_name') %>% 
+  mutate(frac=value/raw_reads) %>% 
+  ggplot(aes(key, frac, fill=key)) +
+  geom_col() +
+  scale_fill_manual( values = c( "pass"="darkgreen", "filtered"="red", 
+                                 "wrong_srbc"="grey", "too_short"="grey", "no_adapter"="grey"  ), guide = "none" ) +
+  facet_wrap(sample_name~.) +
+  ylim(0,1) + xlab("") + ylab("") +
+  coord_flip() + 
+  ggtitle("Filtering statistics (fractions)")
+
+p2 = d$counted_read_stats %>% 
+  left_join(d$sample_sheet, by='sample_name') %>% 
+  ggplot(aes(sample_name,value, fill=key)) +
+  geom_col(position = 'dodge') +
+  #scale_fill_manual( values = c( "NaIO4_oxidized"="darkgreen" ), guide = "none" ) +
+  ylab("") + xlab("") +
+  scale_y_log10() +
+  coord_flip() + 
+  ggtitle("Raw counts per genotype", "More alignments than reads due to multimappers")
+
+p3 = d$counted_read_stats %>% 
+  left_join(d$sample_sheet, by='sample_name') %>% 
+  filter(key %in% c('counted_reads')) %>% 
+  ggplot(aes(sample_name,value, fill=genotype)) +
+  geom_col() + xlab("") + ylab("") +
+  coord_flip() + 
+  ggtitle("Raw numbers of mapped-reads per sample")
+
+p4 = d$parsed_read_stats %>% 
+  filter(category=='mean_aln_score') %>% 
+  ggplot(aes(key, value, col=sample_name, group=key)) +
+  geom_boxplot() +
+  geom_jitter() + xlab("") + ylab("") + 
+  ggtitle("Mean adapter alignment scores", "Dashed line is minimum filter threshold") +
+  geom_hline(yintercept = d$config$demux_param$min_aln_score, col='black', linetype='dotted')
+
+p5 = d$srbc_stats %>% 
+  group_by(sample_name, filtered, expected, known) %>% 
+  summarise(tot=sum(count)) %>% 
+  mutate(cat=case_when(
+    expected==1 ~ 'true',
+    expected==0 & known==1 ~ 'known',
+    TRUE ~ 'other'
+  )) %>% 
+  ggplot(aes(sample_name, tot, fill=cat)) + 
+  geom_col() +
+  facet_wrap(ifelse(filtered==1,'filtered','pass')~.) +
+  coord_flip() + 
+  xlab("") + ylab("") +
+  ggtitle("sRBC statistics for filtered/pass reads")
+  
+p6 = d$sc %>% 
+  ggplot(aes(si_conc, si_counts, col=sample_name, group=sample_name)) +
+  geom_point() +
+  geom_line() +
+  #geom_smooth(method='lm',se = FALSE) +
+  facet_wrap(paste0('methylated: ',methylated)~., scales = 'free_x')+
+  scale_x_log10() +
+  scale_y_log10() +
+  ggtitle("Target concentrations vs read counts for spike-in sequences") +
+  xlab("Spike-in input concentration") + ylab("Read counts")
+
+my_plot_grid(p1,p2,p3,p4,p5,p6, labels=c('A','B','C','D','E','F'), main='Small RNA pipeline filter statistics', ncol=2)
+ggsave(paste0(params$out_dir,'/qc_pipeline_filtering_stats.pdf'), width=14, height=9)
+```
+
+## Spike-ins
+
+spike-ins mX2, mX4, mX6, mX8 are 2'-O-methylated and thus are expected to be enriched in samples that are oxidized with NaIO4.
+ 
+```{r}
+p1 = d$sc %>% 
+  ggplot(aes(si_conc, si_counts, col=sample_name, group=sample_name)) +
+  geom_point() +
+  geom_line() +
+  #geom_smooth(method='lm',se = FALSE) +
+  facet_wrap(paste0('methylated: ',methylated)~., scales = 'free_x')+
+  scale_x_log10() +
+  scale_y_log10() +
+  ggtitle("Target concentrations vs read counts for spike-in sequences")
+
+p2 = d$sc %>% 
+  ggplot(aes(si_conc, si_counts, col=NaIO4_oxidized, group=sample_name)) +
+  geom_point(alpha=0.7) +
+  #geom_line() +
+  facet_wrap(paste0('methylated: ',methylated)~., scales = 'free_x')+
+  scale_x_log10() +
+  scale_y_log10() +
+  ggtitle("Target concentrations vs read counts for spike-in sequences",
+          "Lines: linear regression") +
+ #stat_poly_eq(aes(label = paste(..rr.label..)), parse = TRUE, size = 3)+
+  geom_line(stat="smooth", method='lm', formula = y~x, se = FALSE, alpha=0.2, size=2) +
+  stat_fit_glance(method = 'lm', method.args = list(formula = y~x),
+                  label.x="middle", label.y="top",
+                  hstep=0.08,
+                  geom = 'text', aes(label = paste("p=", signif(..p.value.., digits = 4), sep = "")),
+                  size = 3) 
+
+p3 = d$sc %>% 
+  filter(!is.na(si_name)) %>% 
+  mutate(si_count_norm=si_counts/si_conc) %>% 
+  group_by(sample_name,NaIO4_oxidized,methylated) %>% 
+  summarise(si_count_norm_sum=sum(si_count_norm)) %>% 
+  ggplot(aes(sample_name, si_count_norm_sum, fill=methylated)) +
+  geom_col(position='dodge') +
+  facet_wrap(paste0('Oxidized: ',NaIO4_oxidized)~., scales = 'free') +
+  ggtitle("Sum of spikein read counts (norm by input concentration)") +
+  coord_flip() + xlab("") + ylab("")
+
+p4 = d$sc %>% 
+  mutate(cat=case_when(
+    is.na(si_name)~'miRNA read',
+    TRUE~'spikein read'
+    )) %>% group_by(sample_name, cat, NaIO4_oxidized, raw_reads) %>% 
+  summarise(count=sum(si_counts)) %>% 
+  mutate(frac=count/raw_reads) %>% 
+  ggplot(aes(sample_name, count, fill=cat)) +
+  geom_col(position='dodge') +
+  coord_flip() + xlab("") + ylab("") +
+  ggtitle("Raw counts of spikein vs miRNA reads") 
+  
+# 
+# tab2 = d$sc %>% 
+#   filter(!is.na(si_name)) %>% 
+#   mutate(si_count_norm=si_counts/si_conc) %>% 
+#   select(methylated, sample_name, si_count_norm,NaIO4_oxidized) %>% 
+#   group_by(NaIO4_oxidized, sample_name, methylated) %>% 
+#   summarise(si_count_norm=sum(si_count_norm)) %>% 
+#   mutate(methylated=ifelse(methylated=='yes','Methylated','Unmethylated')) %>% 
+#   pivot_wider(names_from=methylated, values_from=si_count_norm) 
+# 
+# p5 = tab2 %>% plot_corr('Unmethylated', 'Methylated', 'NaIO4_oxidized') + 
+#   ggtitle('Sum of normalized spikein counts')
+  
+my_plot_grid(p1,p2, p3, p4, labels=c('A','B','C','D'), main="Spike-in statistics")
+ggsave(paste0(params$out_dir,'/qc_spikein_stats.pdf'), width=14, height=9)
+```
+
+## Mapping Stats
+
+```{r}
+
+# mappable reads (from spikein count stats)
+map_stats = list(
+  "0" = d$sample_sheet %>% select(sample_name, value=raw_reads) %>% mutate(key='raw_reads'),
+  "1" = d$parsed_read_stats %>% filter(category=='read_count') %>% select(sample_name, key, value),
+  "2" = d$sc %>% filter(is.na(si_name)) %>% select(sample_name, value=si_counts) %>% mutate(key='mappable_reads'),
+  "3" = d$counted_read_stats
+) %>% bind_rows() %>% pivot_wider(names_from=key, values_from=value) %>%
+  mutate(unmapped_reads=mappable_reads-mapped_reads,
+         frac_mapped=mapped_reads/mappable_reads) %>% 
+  left_join(d$sample_sheet %>% select(-(raw_reads)),
+            by='sample_name')
+map_stats
+
+
+
+# NOTE: counted reads is > mapped reads due to multimappers
+lev=c("raw_reads","pass","mappable_reads","mapped_reads","counted_reads")
+p1 = map_stats %>% 
+  select(sample_name, raw_reads, pass, mappable_reads, mapped_reads, counted_reads) %>% 
+  pivot_longer(-(sample_name)) %>% 
+  mutate(name=factor(name, levels=rev(lev))) %>% 
+  ggplot(aes(sample_name, value, fill=name)) +
+  geom_col(position = 'dodge')  +
+  ylab("count") +
+  coord_flip()
+
+p2 = map_stats %>% 
+  ggplot(aes(sample_name, frac_mapped, fill=NaIO4_oxidized)) +
+  geom_col() +
+  ylim(0,1) +
+  ggtitle("Fraction of mapped reads (after spike-in removal)") +
+  coord_flip()
+
+my_plot_grid(p1,p2,main='Pipeline filtering statistics', ncol=1)
+ggsave(paste0(params$out_dir,'/qc_mapping_stats.pdf'), width=12, height=9)
+```
+
+## Normalization
+
+```{r}
+
+
+p1=d$sc %>% filter(methylated=='yes') %>% 
+  mutate(si_count_norm=si_counts/si_conc) %>% 
+  group_by(sample_name) %>% 
+  summarise(s_raw=sum(si_counts), s_norm=sum(si_count_norm)) %>% 
+  pivot_longer(-c(sample_name)) %>% 
+  ggplot(aes(sample_name, value, fill=name)) + geom_col() + 
+  facet_grid(name~., scales = 'free') +
+  ggtitle("Raw and normlized sum of counts for methylated spike-ins") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+p2=d$sc %>% filter(methylated=='yes') %>% 
+  mutate(si_count_norm=si_counts/si_conc) %>% 
+  group_by(sample_name) %>% 
+  summarise(s_raw=sum(si_counts), s_norm=sum(si_count_norm)) %>% 
+  ggplot(aes(s_raw,s_norm)) + geom_point() 
+
+
+# plot linear fit r2
+d$sc %>% filter(methylated=='yes') %>%
+  ungroup() %>% 
+  nest_by(sample_name) %>%
+  mutate(fit = list(lm(si_counts~si_conc, data = data))) %>%
+  summarize(glance(fit))
+
+lib_size_sc = d$sc %>% 
+  filter(methylated=='yes') %>% 
+  mutate(si_count_norm=si_counts/si_conc) %>% 
+  group_by(sample_name, NaIO4_oxidized) %>% 
+  summarise(s_norm=sum(si_count_norm)) 
+
+lib_size_sc %>% 
+  ggplot(aes(sample_name, s_norm, fill=NaIO4_oxidized)) +
+  geom_col() +
+  coord_flip()
+  
+plot_grid(p1,p2)
+```
+
+# Counts
+
+## Raw
+
+```{r}
+
+my_colors=c(
+  "low"="grey21",
+  "medium"="goldenrod4",
+  "high"="green4",
+  "spikein_methylated"="red",
+  "spikein_unmethylated"="black"
+)
+my_alpha=c(
+  "miRNA"=0.25,
+  "miRNA_primary_transcript"=0.25,
+  "spikein"=1
+)
+# show_col(my_colors)
+calc_dt = function(o='mouse', libsize=lib_size_sc) {
+  d$cnt %>% 
+    filter(organism==!!o) %>% 
+    filter(type=='miRNA') %>% 
+    left_join(libsize %>% select(sample_name, s_norm), by='sample_name') %>% 
+    mutate(reads_lib_norm=reads_norm/s_norm) %>% 
+    select(gene_id, sample_name, reads_raw=reads, reads_norm, reads_lib_norm, isoforms, frac_tailed, type) %>% 
+    pivot_wider(names_from=sample_name, values_from=c(reads_raw, reads_norm, reads_lib_norm, isoforms, frac_tailed) ) %>% 
+    mutate(readsum = rowSums(select(., starts_with("reads_raw")), na.rm=TRUE)) %>% 
+    ungroup() %>% 
+    mutate(expression = ntile(readsum, 5),
+           expression_cat=case_when(
+             expression==1 ~ 'low',
+             expression==5 ~ 'high',
+             TRUE ~ 'medium'
+           )) %>% 
+    bind_rows( # spike-ins
+    d$sc %>% 
+      filter(organism==!!o) %>% 
+      filter(!is.na(si_name)) %>%
+      left_join(libsize %>% select(sample_name, s_norm), by='sample_name') %>% 
+      #mutate(reads_lib_norm=ifelse(methylated=='yes',si_counts/s_norm,NA)) %>% 
+      mutate(reads_lib_norm=si_counts/s_norm,NA) %>% 
+      mutate(expression_cat=ifelse(methylated=='yes', 'spikein_methylated', 'spikein_unmethylated' )) %>% 
+      select(gene_id=si_name, sample_name, reads_raw=si_counts, expression_cat, reads_lib_norm) %>% 
+      mutate(reads_norm=NA, isoforms=NA, frac_tailed=NA, type='spikein') %>% 
+      pivot_wider(names_from=sample_name, values_from=c(reads_raw, reads_norm, reads_lib_norm, isoforms, frac_tailed) ) %>% 
+      mutate(readsum = rowSums(select(., starts_with("reads_raw")))) 
+    ) 
+}
+
+
+tab = calc_dt(o='mouse', libsize=lib_size_sc) 
+m_plt=list()
+m_plt[['p1a']] = tab %>% plot_corr('reads_raw_hen2', 'reads_raw_hen2_ox', 'expression_cat', 'type', 'type') + 
+  ggtitle('raw reads, mHen1/mHen1') + scale_color_manual(values = my_colors, limits = force) + scale_alpha_manual(values = my_alpha, limits = force)
+m_plt[['p2a']] = tab %>% plot_corr('reads_raw_hen2_cre', 'reads_raw_hen_cre_ox', 'expression_cat', 'type', 'type') + 
+  ggtitle('raw reads, mHen1/+,Mb1cre/+') + scale_color_manual(values = my_colors, limits = force) + scale_alpha_manual(values = my_alpha, limits = force)
+m_plt[['p3a']] = tab %>% plot_corr('reads_raw_hen2_cre', 'reads_raw_hen2_cre_ox', 'expression_cat', 'type', 'type') + 
+  ggtitle('raw reads, mHen1/mHen1,Mb1cre/+') + scale_color_manual(values = my_colors, limits = force) + scale_alpha_manual(values = my_alpha, limits = force)
+
+m_plt[['p1b']] = tab %>% plot_corr('reads_norm_hen2', 'reads_norm_hen2_ox', 'expression_cat', 'type', 'type') + 
+  ggtitle('norm reads, mHen1/mHen1') + scale_color_manual(values = my_colors, limits = force) + scale_alpha_manual(values = my_alpha, limits = force)
+m_plt[['p2b']] = tab %>% plot_corr('reads_norm_hen2_cre', 'reads_norm_hen_cre_ox', 'expression_cat', 'type', 'type') + 
+  ggtitle('norm reads, mHen1/+,Mb1cre/+') + scale_color_manual(values = my_colors, limits = force) + scale_alpha_manual(values = my_alpha, limits = force)
+m_plt[['p3b']] = tab %>% plot_corr('reads_norm_hen2_cre', 'reads_norm_hen2_cre_ox', 'expression_cat', 'type', 'type') + 
+  ggtitle('norm reads, mHen1/mHen1,Mb1cre/+') + scale_color_manual(values = my_colors, limits = force) + scale_alpha_manual(values = my_alpha, limits = force)
+
+
+m_plt[['p1c']] = tab %>% plot_corr('reads_lib_norm_hen2', 'reads_lib_norm_hen2_ox', 'expression_cat', 'type', 'type') + 
+  ggtitle('lib_norm reads, mHen1/mHen1') + scale_color_manual(values = my_colors, limits = force) + scale_alpha_manual(values = my_alpha, limits = force)
+m_plt[['p2c']] = tab %>% plot_corr('reads_lib_norm_hen2_cre', 'reads_lib_norm_hen_cre_ox', 'expression_cat', 'type', 'type') + 
+  ggtitle('lib_norm reads, mHen1/+,Mb1cre/+') + scale_color_manual(values = my_colors, limits = force) + scale_alpha_manual(values = my_alpha, limits = force)
+m_plt[['p3c']] = tab %>% plot_corr('reads_lib_norm_hen2_cre', 'reads_lib_norm_hen2_cre_ox', 'expression_cat', 'type', 'type') + 
+  ggtitle('lib_norm reads, mHen1/mHen1,Mb1cre/+') + scale_color_manual(values = my_colors, limits = force) + scale_alpha_manual(values = my_alpha, limits = force)
+
+
+# m_plt[['p1d']] = tab %>% plot_corr('frac_tailed_hen2', 'frac_tailed_hen2_ox', 'expression_cat', 'type', 'type') + 
+#   ggtitle('Fraction tailed reads, mHen1/mHen1') + scale_x_continuous() + scale_y_continuous() + 
+#   scale_color_manual(values = my_colors, limits = force) + scale_alpha_manual(values = my_alpha, limits = force)
+# m_plt[['p2d']] = tab %>% plot_corr('frac_tailed_hen2_cre', 'frac_tailed_hen_cre_ox', 'expression_cat', 'type', 'type') + 
+#   ggtitle('Fraction tailed reads, mHen1/+,Mb1cre/+') + scale_x_continuous() + scale_y_continuous() +
+#   scale_color_manual(values = my_colors, limits = force) + scale_alpha_manual(values = my_alpha, limits = force)
+# m_plt[['p3d']] = tab %>% plot_corr('frac_tailed_hen2_cre', 'frac_tailed_hen2_cre_ox', 'expression_cat', 'type', 'type') + 
+#   ggtitle('Fraction tailed reads, mHen1/mHen1,Mb1cre/+') + scale_x_continuous() + scale_y_continuous() + 
+#   scale_color_manual(values = my_colors, limits = force) + scale_alpha_manual(values = my_alpha, limits = force)
+# 
+# m_plt[['p1e']] = tab %>% plot_corr('isoforms_hen2', 'isoforms_hen2_ox', 'expression_cat', 'type', 'type') + 
+#   ggtitle('#isoforms, mHen1/mHen1') + scale_x_continuous() + scale_y_continuous() + 
+#   scale_color_manual(values = my_colors, limits = force) + scale_alpha_manual(values = my_alpha, limits = force)
+# m_plt[['p2e']] = tab %>% plot_corr('isoforms_hen2_cre', 'isoforms_hen_cre_ox', 'expression_cat', 'type', 'type') + 
+#   ggtitle('#isoforms, mHen1/+,Mb1cre/+') + scale_x_continuous() + scale_y_continuous()+ 
+#   scale_color_manual(values = my_colors, limits = force) + scale_alpha_manual(values = my_alpha, limits = force)
+# m_plt[['p3e']] = tab %>% plot_corr('isoforms_hen2_cre', 'isoforms_hen2_cre_ox', 'expression_cat', 'type', 'type') + 
+#   ggtitle('#isoforms, mHen1/mHen1,Mb1cre/+') + scale_x_continuous() + scale_y_continuous() + 
+#   scale_color_manual(values = my_colors, limits = force) + scale_alpha_manual(values = my_alpha, limits = force)
+
+plot_grid(plotlist=m_plt, ncol=3)
+ggsave(paste0(params$out_dir,'/mouse_counts.pdf'), width=16, height=9)
+
+
+
+tab = calc_dt(o='human', libsize=lib_size_sc) 
+h_plt=list()
+h_plt[['p1a']] = tab %>% plot_corr('reads_raw_rko_1', 'reads_raw_rko_ox_1', 'expression_cat', 'type', 'type') + 
+  ggtitle('raw reads, RKO1') + scale_color_manual(values = my_colors, limits = force) + scale_alpha_manual(values = my_alpha, limits = force)
+h_plt[['p2a']] = tab %>% plot_corr('reads_raw_rko_2', 'reads_raw_rko_ox_2', 'expression_cat', 'type', 'type') + 
+  ggtitle('raw reads, RKO2') + scale_color_manual(values = my_colors, limits = force) + scale_alpha_manual(values = my_alpha, limits = force)
+
+h_plt[['p1b']] = tab %>% plot_corr('reads_norm_rko_1', 'reads_norm_rko_ox_1', 'expression_cat', 'type', 'type') + 
+  ggtitle('norm reads, mHen1/mHen1') + scale_color_manual(values = my_colors, limits = force) + scale_alpha_manual(values = my_alpha, limits = force)
+h_plt[['p2b']] = tab %>% plot_corr('reads_norm_rko_2', 'reads_norm_rko_ox_2', 'expression_cat', 'type', 'type') + 
+  ggtitle('norm reads, mHen1/+,Mb1cre/+') + scale_color_manual(values = my_colors, limits = force) + scale_alpha_manual(values = my_alpha, limits = force)
+
+h_plt[['p1c']] = tab %>% plot_corr('reads_lib_norm_rko_1', 'reads_lib_norm_rko_ox_1', 'expression_cat', 'type', 'type') + 
+  ggtitle('lib_norm reads, mHen1/mHen1') + scale_color_manual(values = my_colors, limits = force) + scale_alpha_manual(values = my_alpha, limits = force)
+h_plt[['p2c']] = tab %>% plot_corr('reads_lib_norm_rko_2', 'reads_lib_norm_rko_ox_2', 'expression_cat', 'type', 'type') + 
+  ggtitle('lib_norm reads, mHen1/+,Mb1cre/+') + scale_color_manual(values = my_colors, limits = force) + scale_alpha_manual(values = my_alpha, limits = force)
+
+# plt[['p1d']] = tab %>% plot_corr('frac_tailed_rko_1', 'frac_tailed_rko_ox_1', 'expression_cat', 'type', 'type') + 
+#   ggtitle('Fraction tailed reads, mHen1/mHen1') + scale_x_continuous() + scale_y_continuous() + 
+#   scale_color_manual(values = my_colors, limits = force) + scale_alpha_manual(values = my_alpha, limits = force)
+# plt[['p2d']] = tab %>% plot_corr('frac_tailed_rko_2', 'frac_tailed_rko_ox_2', 'expression_cat', 'type', 'type') + 
+#   ggtitle('Fraction tailed reads, mHen1/+,Mb1cre/+') + scale_x_continuous() + scale_y_continuous() +
+#   scale_color_manual(values = my_colors, limits = force) + scale_alpha_manual(values = my_alpha, limits = force)
+# 
+# plt[['p1e']] = tab %>% plot_corr('isoforms_rko_1', 'isoforms_rko_ox_1', 'expression_cat', 'type', 'type') + 
+#   ggtitle('#isoforms, mHen1/mHen1') + scale_x_continuous() + scale_y_continuous() + 
+#   scale_color_manual(values = my_colors, limits = force) + scale_alpha_manual(values = my_alpha, limits = force)
+# plt[['p2e']] = tab %>% plot_corr('isoforms_rko_2', 'isoforms_rko_ox_2', 'expression_cat', 'type', 'type') + 
+#   ggtitle('#isoforms, mHen1/+,Mb1cre/+') + scale_x_continuous() + scale_y_continuous()+ 
+#   scale_color_manual(values = my_colors, limits = force) + scale_alpha_manual(values = my_alpha, limits = force)
+
+plot_grid(plotlist=h_plt, ncol=2)
+ggsave(paste0(params$out_dir,'/human_counts.pdf'), width=16, height=9)
+
+
+p1=m_plt[['p1a']] 
+p2=m_plt[['p2a']] 
+p3=m_plt[['p3a']] 
+p4=h_plt[['p1a']] 
+p5=h_plt[['p2a']] 
+
+my_plot_grid(p1,p2,p3,p4,p5, ncol=2, main='Raw read count correlations')
+ggsave(paste0(params$out_dir,'/raw_read_count_correlations.pdf'), width=12, height=9)
+
+p1=m_plt[['p1c']] 
+p2=m_plt[['p2c']] 
+p3=m_plt[['p3c']] 
+p4=h_plt[['p1c']] 
+p5=h_plt[['p2c']] 
+
+my_plot_grid(p1,p2,p3,p4,p5, ncol=2, main='Raw read count correlations')
+ggsave(paste0(params$out_dir,'/norm_read_count_correlations.pdf'), width=12, height=9)
+
+```
+
+## Tailing + isoforms
+
+```{r}
+p1 = d$cnt %>% 
+  filter(type=='miRNA')  %>% 
+  ggplot(aes(sample_name, frac_tailed, fill=NaIO4_oxidized)) + 
+  geom_boxplot() + xlab("") + ylab("fraction tailed") +
+  facet_wrap(organism~., scale='free_x') +
+  ggtitle("Fraction of tailed reads") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_y_sqrt()
+
+p2 = d$cnt %>% 
+  filter(type=='miRNA')  %>% 
+  ggplot(aes(sample_name, isoforms, fill=NaIO4_oxidized)) + 
+  geom_boxplot() + xlab("") + ylab("# isoforms") +
+  facet_wrap(organism~., scale='free_x') +
+  ggtitle("Number of 5'-Isoforms") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_y_sqrt()
+
+tail_hist=list(
+  'a' = d$cnt %>% filter(type=='miRNA') %>% mutate(read_count=reads-reads_tailed, tail_len=0) %>% select(sample_name, gene_id, tail_len, read_count),
+  'b' = d$tai %>% filter(type=='miRNA') %>% select(sample_name, gene_id, tail_len, read_count)
+) %>% bind_rows() %>% 
+  left_join(d$sample_sheet, by='sample_name') %>% 
+  mutate(tail_len=factor(ifelse(tail_len>10,'>10',tail_len), levels=c(seq(0,10),'>10'))) %>%
+  group_by(sample_name) %>% mutate(total=sum(read_count)) %>% 
+  group_by(sample_name, tail_len, organism) %>% 
+  mutate(tc=sum(read_count), tc_norm=ifelse(total>0,tc/total,NA)) 
+
+p3 = tail_hist %>% ggplot(aes(tail_len, tc_norm, col=NaIO4_oxidized, group=sample_name)) + 
+  geom_line() + scale_y_sqrt() + facet_wrap(organism~.) +
+  xlab("Tail length") + ylab("Fraction of reads")
+
+# p3 = d$tai %>% 
+#   filter(type=='miRNA')  %>% 
+#   group_by(sample_name, NaIO4_oxidized, organism, gene_id ) %>% 
+#   summarise(mean_tail_len=mean(tail_len)) %>% 
+#   ungroup() %>% 
+#   ggplot(aes(sample_name, mean_tail_len, fill=NaIO4_oxidized)) + 
+#   geom_boxplot() + xlab("") + ylab("Mean tail length") +
+#   facet_wrap(organism~., scale='free_x') +
+#   ggtitle("Mean tail length") + 
+#   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) 
+  
+
+p4 = d$iso %>% filter(type=='miRNA') %>% 
+  mutate(iso_off=ifelse(strand=='-',end-iso_fpend,iso_fpend-start)) %>% 
+  group_by(organism, sample_name, genotype, NaIO4_oxidized) %>% 
+  mutate(tot=sum(raw_reads)) %>% 
+  group_by(organism, sample_name, genotype, NaIO4_oxidized,iso_off,tot) %>% 
+  summarise(reads_sum=sum(raw_reads)) %>% 
+  mutate(reads_sum_norm=reads_sum/tot) %>% 
+  ggplot(aes(iso_off, reads_sum_norm, group=sample_name, col=genotype, linetype=NaIO4_oxidized)) +
+  geom_line() +
+  facet_wrap(organism~., scale='free') +
+  ylab("Fraction of reads") + xlab("Relative isoform offset")+
+  geom_vline(xintercept = 0, linetype='dashed', col='black') +
+  ggtitle("5'-end read position relative to annotation 5'-end",
+          "Dashed line: canonical 5'-end")
+
+my_plot_grid(p1, p2, p3, p4, ncol=2, main="Tailing and 5'-isoforms")
+ggsave(paste0(params$out_dir,'/tailing.pdf'), width=12, height=9)
+
+
+
+# well_exp = d$cnt %>% 
+#     filter(type=='miRNA') %>% 
+#     pivot_wider(names_from=sample_name, values_from=c(reads) ) %>% 
+#     mutate(readsum = rowSums(select(., starts_with("reads_")), na.rm=TRUE)) %>% 
+#     ungroup() %>% 
+#     filter(readsum>1000) %>% 
+#     pull(gene_id)
+
+
+```
+
+# Examples
+```{r}
+
+# miRNAs with high fractions of invalid reads
+d$cnt %>% filter(type=='miRNA') %>% filter(reads>10, frac_invalid>0.1) %>% select(sample_name,gene_id,type,isoforms,reads, reads_norm,reads_tailed,reads_tailed_norm, reads_invalid,Name,frac_invalid)
+
+d$cnt %>% filter(type=='miRNA') %>% filter(reads>10) %>% 
+  ggplot(aes(frac_invalid, col=NaIO4_oxidized)) +
+           geom_density() +
+  ggtitle("Fraction of invalid miRNA reads", "Minimum 10 counted reads")
+
+
+d$tai %>% filter(type=='miRNA')  %>% filter(tail_len>10) %>% group_by(gene_id) %>% count() %>% filter(n>10)
+```
+
+
+## Comparison to older pipeline versions
+```{r}
+# build_dataset_old = function(sample_sheet, ref_dir, results_dir) {
+#   fc=list()
+#   fc_stats=list()
+#   for ( sample in sample_sheet %>% pull(sample_name)) {
+#     fn=paste0(sample_sheet %>% filter(sample_name==sample) %>% pull(fn))
+#     fc[[sample]] = load_table(paste0(results_dir, '/feature_counts/Hen1#', fn, '.featureCounts.txt')) %>% dplyr::rename(count=8)
+#     fc_stats[[sample]] = load_table(paste0(results_dir, '/feature_counts/Hen1#', fn, '.featureCounts.txt.summary'), header = F) %>% 
+#       filter(V1 != "Status") %>% 
+#       mutate_at(c('V2'), as.numeric)
+#   }
+#   fc = fc %>% 
+#   bind_rows(.id='sample_name') %>% 
+#   mutate(sample_name=factor(sample_name, levels=!!sample_names)) %>% 
+#   left_join(load_table(paste0(results_dir, '/transcriptome/Hen1_mouse.feature_meta.tsv')), by='Geneid') %>% 
+#   left_join(sample_sheet, by='sample_name')
+#   fc_stats = fc_stats %>% 
+#     bind_rows(.id='sample_name') %>% 
+#     mutate(sample_name=factor(sample_name, levels=!!sample_names)) %>% 
+#     rename(c('V1'='key', 'V2'='value'))
+#   d=list()
+#   d[['fc']]=fc
+#   d[['fc_stats']]=fc_stats
+#   return(d)
+# }
+# 
+# d_nomm_s18 = build_dataset_old(sample_sheet, params$ref, '/Volumes/groups/ameres/Niko/projects/Cochella/Hen1/results_reads_shorter_18/')
+# 
+# tab = d_nomm_s18[['fc']] %>% select(sample_name, gene_id=Geneid, count) %>% 
+#   left_join( d[['cnt']] %>% select(sample_name, gene_id, type, Name, reads, reads_norm), by=c('sample_name', 'gene_id'))
+# 
+# tab %>% ggplot(aes(count, reads)) +
+#   geom_point() +
+#   facet_wrap(sample_name~.) +
+#   scale_x_log10() +
+#   scale_y_log10()
+# 
+# tab %>% filter(reads>1000000)
+# 
+# tab %>% pivot_wider(id_cols=c('gene_id', 'Name'), names_from=sample_name, values_from=reads) %>% 
+#   ggplot(aes(hen2, hen2_ox)) +
+#   geom_point() +
+#   scale_x_log10() +
+#   scale_y_log10()
+```
+
+```{r}
+# d_mm = build_dataset_old(sample_sheet, params$ref, '/Volumes/groups/ameres/Niko/projects/Cochella/Hen1/results_allowing_mismatches/')
+# 
+# tab = d$fc %>% 
+#   filter(Feature_type=='miRNA_primary_transcript', organism=='mouse') %>% 
+#   select(Chr, sample_name, count) %>% 
+#   pivot_wider(names_from=sample_name, values_from=count) %>% 
+#   ungroup() %>% 
+#   mutate(sum = rowSums(select(., starts_with("hen")))) %>% 
+#   arrange(desc(sum)) %>% 
+#   mutate(highly_expressed=sum>1000)
+# 
+# tab_nomm_s18 = d_nomm_s18$fc %>% 
+#   filter(Feature_type=='miRNA_primary_transcript', organism=='mouse') %>% 
+#   select(Chr, sample_name, count) %>% 
+#   pivot_wider(names_from=sample_name, values_from=count) %>% 
+#   ungroup() %>% 
+#   mutate(sum = rowSums(select(., starts_with("hen")))) %>% 
+#   arrange(desc(sum)) %>% 
+#   mutate(highly_expressed=sum>1000)
+# 
+# tab_mm = d_mm$fc %>% 
+#   filter(Feature_type=='miRNA_primary_transcript', organism=='mouse') %>% 
+#   select(Chr, sample_name, count) %>% 
+#   pivot_wider(names_from=sample_name, values_from=count) %>% 
+#   ungroup() %>% 
+#   mutate(sum = rowSums(select(., starts_with("hen")))) %>% 
+#   arrange(desc(sum)) %>% 
+#   mutate(highly_expressed=sum>1000)
+# 
+# 
+# p1 = tab %>% plot_corr('hen2', 'hen2_ox', 'highly_expressed') + 
+#   ggtitle('No mismatches', 'mHen1/mHen1')
+# p2 = tab %>% plot_corr('hen2_cre', 'hen_cre_ox', 'highly_expressed') + 
+#   ggtitle('No mismatches', 'mHen1/+,Mb1cre/+')
+# p3 = tab_nomm_s18 %>% plot_corr('hen2', 'hen2_ox', 'highly_expressed') + 
+#   ggtitle('No mismatches, reads<18', 'mHen1/mHen1')
+# p4 = tab_nomm_s18 %>% plot_corr('hen2_cre', 'hen_cre_ox', 'highly_expressed') + 
+#   ggtitle('No mismatches, reads<18', 'mHen1/+,Mb1cre/+')
+# p5 = tab_mm %>% plot_corr('hen2', 'hen2_ox', 'highly_expressed') + 
+#   ggtitle('With mismatches', 'mHen1/mHen1')
+# p6 = tab_mm %>% plot_corr('hen2_cre', 'hen_cre_ox', 'highly_expressed') + 
+#   ggtitle('With mismatches', 'mHen1/+,Mb1cre/+')
+# plot_grid(p1,p2,p3,p4,p5,p6, labels=c('A','B','C','D','E','F'), ncol=2)
+# 
+# tab = d$fc %>% 
+#   filter(Feature_type=='miRNA_primary_transcript') %>% 
+#   select(sample_name, Name, count) %>% 
+#   left_join(
+#     d_mm$fc %>% 
+#     filter(Feature_type=='miRNA_primary_transcript') %>% 
+#     select(sample_name, Name, count_mm=count), by=c('sample_name', 'Name'))
+# 
+# topdiff= tab %>% 
+#   mutate(diff=abs(count-count_mm)) %>% 
+#   arrange(desc(diff)) %>% 
+#   select(Name) %>% 
+#   distinct() %>% 
+#   head(10) %>% 
+#   pull(Name)
+# 
+# tab  %>% 
+#   mutate(count=count+0.001, count_mm=count_mm+0.001) %>% 
+#   mutate(Name=case_when(
+#     Name %in% topdiff ~ Name,
+#     TRUE ~ NA_character_
+#   )) %>% 
+#   mutate(a=case_when(
+#     Name %in% topdiff ~ 1,
+#     TRUE ~ 0.1
+#   )) %>% 
+#   ggplot(aes(count, count_mm, col=Name, alpha=a)) +
+#   geom_point() +
+#   facet_wrap(sample_name~., scale='free', nrow = 2) +
+#   geom_abline(slope=1, intercept = 0, col='red', linetype='dotted') +
+#   scale_x_log10() +
+#   scale_y_log10() +
+#   ggtitle("Comparison of counts (+pseudo) with and without mismatches.", "Outliers with max difference are highlighted")
+# 
+# 
+# 
+# let7_reads_mm = 
+#   load_table('/Volumes//groups/ameres/Niko/projects/Cochella/Hen1/results_allowing_mismatches/comparison_let7f-1/let7_reads_mm.tsv', header = F) %>% pull(V1) %>% unique() %>% sort()
+# let7_reads_nomm = 
+#   load_table('/Volumes//groups/ameres/Niko/projects/Cochella/Hen1/results_allowing_mismatches/comparison_let7f-1/let7_reads_nomm.tsv', header = F) %>% pull(V1) %>% unique() %>% sort()
+# 
+# setdiff(let7_reads_mm, let7_reads_nomm)
+# setdiff(let7_reads_nomm, let7_reads_mm)
+
+```

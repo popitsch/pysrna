@@ -281,7 +281,7 @@ p2 = map_stats %>%
   ggtitle("Fraction of mapped reads (after spike-in removal)") +
   coord_flip()
 
-my_plot_grid(p1,p2,main='Pipeline filtering statistics', ncol=1)
+my_plot_grid(p1,p2,main='Pipeline mapping statistics', ncol=1)
 ggsave(paste0(params$out_dir,'/qc_mapping_stats.pdf'), width=12, height=9)
 ```
 
@@ -479,7 +479,7 @@ p3=m_plt[['p3c']]
 p4=h_plt[['p1c']] 
 p5=h_plt[['p2c']] 
 
-my_plot_grid(p1,p2,p3,p4,p5, ncol=2, main='Raw read count correlations')
+my_plot_grid(p1,p2,p3,p4,p5, ncol=2, main='Library-normalized read count correlations')
 ggsave(paste0(params$out_dir,'/norm_read_count_correlations.pdf'), width=12, height=9)
 
 ```

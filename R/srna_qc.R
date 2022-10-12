@@ -230,6 +230,7 @@ p6 = d$sc %>%
   ggtitle("Target concentrations vs read counts for spike-in sequences") +
   xlab("Spike-in input concentration") + ylab("Read counts")
 
+pdf(paste0(outdir,'/qc_pipeline_filtering_stats.pdf'), width=20, height=15)
 my_plot_grid(p1,p2,p3,p4,p5,p6, labels=c('A','B','C','D','E','F'), main='Small RNA pipeline filter statistics', ncol=2)
-ggsave(paste0(outdir,'/qc_pipeline_filtering_stats.pdf'), width=14, height=9)
+dev.off()
 

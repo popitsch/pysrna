@@ -17,16 +17,10 @@ output:
     fig_height: 10
     fig_caption: true
 params:
-    sample_sheet:
-      value: "/Volumes/groups/ameres/Niko/projects/Ameres/nina/dsRNA_soaking_timecourse/sample_sheet.tsv"
-    ref:
-      value: "/Volumes/groups/ameres/Niko/projects/Ameres/nina/dsRNA_soaking_timecourse/ref/"
-    results:
-      value: "/Volumes/groups/ameres/Niko/projects/Ameres/nina/dsRNA_soaking_timecourse/results/"
+    data_file:
+      value: "/Volumes/groups/ameres/Niko/projects/Ameres/nina/dsRNA_soaking_timecourse/results/data.rds"
     out_dir:
-       value: "/Volumes/groups/ameres/Niko/projects/Ameres/nina/dsRNA_soaking_timecourse/analysis/"
-    thomas_data:   
-       value: "/Volumes/groups/bioinfo/shared/Ameres.GRP/Nina.Khaldieh/R14043/"
+      value: "/Volumes/groups/ameres/Niko/projects/Ameres/nina/dsRNA_soaking_timecourse/results/analysis/"
 ---
 
 <style type="text/css">
@@ -76,11 +70,17 @@ load_table = function(dataF, append="", header=T, nrows=Inf, skip=0) {
   }
 }
 
+# multiple plots with single title
+my_plot_grid = function(..., main=NULL) {
+  plot_row=plot_grid(...)
+  title <- ggdraw() + draw_label( main, fontface = 'bold', x = 0, hjust = 0 ) + theme(plot.margin = margin(0, 0, 0, 7))
+  return (plot_grid(title, plot_row, ncol = 1, rel_heights = c(0.1, 1)))
+}
 
 #
 # Draw correlations between two columns
 #
-plot_corr = function(data, a, b, c=1, labx=a, laby=b, main=paste0("Correlation between ", a, " and ", b), drawdiag=F, log=F, limits0=T, removeOutliers=F, testCorrelation=F, cor_y_pos=0.85, binhex=T, direct_labels=F, return_plot=F) {
+plot_corr = function(data, a, b, c=1, s=NULL, labx=a, laby=b, main=paste0("Correlation between ", a, " and ", b), drawdiag=F, log=F, limits0=T, removeOutliers=F, testCorrelation=F, cor_y_pos=0.85, binhex=T, direct_labels=F, return_plot=F) {
   if (testCorrelation) {
     print(cor.test(data[[a]], data[[b]],use="complete.obs"))
   }
@@ -98,7 +98,7 @@ plot_corr = function(data, a, b, c=1, labx=a, laby=b, main=paste0("Correlation b
   if ( binhex ) {
     p = p + stat_binhex(bins=100) + scale_fill_gradientn("", colours = rev(rainbow(10, end = 4/6)))
   } else {
-    p = p + geom_point(aes_string(col=c)) 
+    p = p + geom_point(aes_string(col=c, shape=s)) 
     if ( ! direct_labels) {
       p = p + guides(col=guide_legend(title=c))
     } else {
@@ -122,59 +122,11 @@ plot_corr = function(data, a, b, c=1, labx=a, laby=b, main=paste0("Correlation b
   p = p + theme_classic(base_size = 8)
   return(p)
 }
-
-
 ```
+
 # Data
 ```{r}
-# NOTE: pooled data ignored for now as also not in Tomas' data
-sample_sheet = load_table(params$sample_sheet) %>% filter(sample_name != 'pooled_iii')
-sample_names = unique(sample_sheet$sample_name)
-sample_sheet=sample_sheet %>% 
-  mutate(sample_name=factor(sample_name, levels=!!sample_names))
-# add raw read counts (from demux stats)
-sample_sheet = sample_sheet %>%  left_join(
-  load_table('/Volumes/groups/ameres/Niko/projects/Ameres/nina/dsRNA_soaking_timecourse/01_raw/raw_read_counts.tsv') %>% 
-    select(sample_id=id, raw_reads=count), by='sample_id') 
-
-parsed_read_stats=list()
-fc_stats=list()
-fc=list()
-sc=list()
-for ( sample in sample_sheet %>% pull(sample_name)) {
-  fn=paste0(sample_sheet %>% filter(sample_name==sample) %>% pull(fn), '.fastq')
-  parsed_read_stats[[sample]] = load_table(paste0(params$results, '/parsed_reads/',fn, '.stats.tsv.gz'))
-  sc[[sample]] = load_table(paste0(params$results, '/spikein_counts/', fn, '_trimmed.fq.counts_spikein.tsv'))
-  fc[[sample]] = load_table(paste0(params$results, '/feature_counts/', fn, '.featureCounts.txt')) %>% dplyr::rename(count=8)
-  fc_stats[[sample]] = load_table(paste0(params$results, '/feature_counts/', fn, '.featureCounts.txt.summary'), header = F) %>% 
-    filter(V1 != "Status") %>% 
-    mutate_at(c('V2'), as.numeric)
-}
-parsed_read_stats = parsed_read_stats %>% 
-  bind_rows(.id='sample_name') %>% 
-  mutate(sample_name=factor(sample_name, levels=!!sample_names))
-
-fc = fc %>% 
-  bind_rows(.id='sample_name') %>% 
-  mutate(sample_name=factor(sample_name, levels=!!sample_names)) %>% 
-  left_join(load_table(paste0(params$results, '/transcriptome/dsRNA_soaking_timecourse.feature_meta.tsv')), by='Geneid') %>% 
-  left_join(sample_sheet, by='sample_name')
-fc_stats = fc_stats %>% 
-  bind_rows(.id='sample_name') %>% 
-  mutate(sample_name=factor(sample_name, levels=!!sample_names)) %>% 
-  rename(c('V1'='key', 'V2'='value'))
-sample_names=unique(sample_sheet$sample_name)
-sc = sc %>% 
-  bind_rows(.id='sample_name') %>% 
-  mutate(sample_name=factor(sample_name, levels=!!sample_names)) %>% 
-  left_join(load_table(paste0(params$ref, '/spikeins_meta.tsv')), by='si_name') %>% 
-  mutate(methylated=ifelse(grepl('mX',si_name, fixed = TRUE), 'yes', 'no' )) %>% 
-  left_join(sample_sheet, by='sample_name') 
-sc = sc %>% 
-  mutate(si_name=factor(si_name, levels=unique(sc$si_name)))
-
-
-
+d = readRDS(params$data_file)
 ```
 
 ## QC

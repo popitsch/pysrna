@@ -109,6 +109,17 @@ build_dataset = function(sample_sheet, config, results_dir) {
   return (d)
 }
 
+
+# ensure some columns
+ensure_columns = function(d, cols, val) {
+  for ( c in cols) {
+    if (! c %in% colnames(d)) {
+      d[[c]]=val
+    }
+  }
+  return(d)
+}
+
 # ===============================================================
 # MAIN
 # ===============================================================
@@ -143,6 +154,9 @@ conf=fromJSON(paste(readLines(srna_config), collapse=""))
 sample_sheet = load_table(conf$sample_sheet) %>% 
   mutate(sample_name=factor(sample_name, levels = unique(sample_name)))
 d = build_dataset(sample_sheet, conf, resultsdir)
+
+# ensure some columns in sample sheet
+d$sample_sheet=ensure_columns(d$sample_sheet, 'genotype', 'wt')
 
 data_file=paste0(outdir,'/data.rds')
 saveRDS(d, data_file, compress = FALSE)

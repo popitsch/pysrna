@@ -2,6 +2,7 @@ from itertools import zip_longest
 import pysam
 import os, sys
 import pybedtools
+from jsonschema.tests.test_validators import startswith
 
 rcmap=bytes.maketrans(b'ATCGatcgNn', b'TAGCTAGCNN')
 def reverse_complement(seq):
@@ -18,6 +19,17 @@ def get_config(config, keys, default_value=None, required=False):
             return default_value
         d = d[k]
     return d  
+
+def localize_config(config):
+    """ Recursively iterates json and adds /Volumes prefix to /group paths"""
+    for k, v in config.items():
+        if isinstance(v, str) and v.startswith('/groups'):
+            config[k]='/Volumes'+ config[k]
+        elif isinstance(v, dict):
+            config[k]=localize_config(v)
+        elif isinstance(v, list):
+            config[k]=['/Volumes'+x if str(x).startswith('/groups') else x for x in v]
+    return config
 
 def parse_info(info, fmt='gff3'):
     """ parse GFF3/GTF info section """

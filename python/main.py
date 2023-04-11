@@ -229,7 +229,7 @@ def parse_reads(dat_file, config, outdir, config_prefix=[]):
     filter_wrong_srbc= get_config(config, config_prefix+['filter_wrong_srbc'], required=True)
     if filter_wrong_srbc:
         sample_sheet=pd.read_csv(get_config(config, ['sample_sheet'], required=True), sep='\t')
-        srbcs={k:v for k,v in zip(sample_sheet['filename_prefix'],sample_sheet['sRBC']) }
+        srbcs={k:v.strip() for k,v in zip(sample_sheet['filename_prefix'],sample_sheet['sRBC']) }
         expected_srbc = srbcs[sample_name]
     else:
         expected_srbc=None

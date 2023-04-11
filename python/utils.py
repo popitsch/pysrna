@@ -2,7 +2,6 @@ from itertools import zip_longest
 import pysam
 import os, sys
 import pybedtools
-from jsonschema.tests.test_validators import startswith
 
 rcmap=bytes.maketrans(b'ATCGatcgNn', b'TAGCTAGCNN')
 def reverse_complement(seq):

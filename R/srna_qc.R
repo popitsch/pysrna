@@ -233,10 +233,10 @@ p6 = d$sc %>%
 if (nrow(d$sample_sheet)>20) {
   # many sample: plot 1 per page
   pdf(paste0(outdir,'/qc_pipeline_filtering_stats.pdf'), width=20, height=15)
-  grid.draw(tableGrob(
+  grid::grid.draw(gridExtra::tableGrob(
     d$sample_sheet, 
     rows = NULL, 
-    theme = ttheme_default(core = list(bg_params = list(fill = "grey99")))
+    theme = gridExtra::ttheme_default(core = list(bg_params = list(fill = "grey99")))
   ))
   print(p1)
   print(p2)
@@ -247,10 +247,10 @@ if (nrow(d$sample_sheet)>20) {
   dev.off()
 } else {
   pdf(paste0(outdir,'/qc_pipeline_filtering_stats.pdf'), width=20, height=15)
-  grid.draw(tableGrob(
+  grid::grid.draw(gridExtra::tableGrob(
     d$sample_sheet, 
     rows = NULL, 
-    theme = ttheme_default(core = list(bg_params = list(fill = "grey99")))
+    theme = gridExtra::ttheme_default(core = list(bg_params = list(fill = "grey99")))
   ))
   my_plot_grid(p1,p2,p3,p4,p5,p6, labels=c('A','B','C','D','E','F'), main='Small RNA pipeline filter statistics', ncol=2)
   dev.off()

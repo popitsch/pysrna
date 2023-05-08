@@ -15,7 +15,7 @@ log.info "\n"
 data_input = Channel
     .fromPath( params.data)
     .ifEmpty { exit 1, "Cannot find any BAM/FASTQs matching: ${params.data}" }
-    .map { file -> tuple(file.baseName, file) }
+    .map { file -> tuple(file.simpleName, file) }
 
 /*
  * Preprocessing: parse reads (align anchor seq, extract umis and sRBC sequences) and filter
@@ -240,7 +240,6 @@ process count_reads {
 		${params.cmd.main_cmd} count_srna_reads --bam ${bam} --anno ${params.dataset_name}.gff3.gz --config ${params.config_file} --config_prefix "counting_param" --out . --name ${name}
 	"""
 }
-
 
 
 

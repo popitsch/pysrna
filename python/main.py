@@ -579,6 +579,49 @@ def downsample_per_chrom(bam_file, max_reads, outdir):
         pysam.index(out_file_bam) # @UndefinedVariable
     except Exception as e:
         print("error sorting+indexing bam: %s" % e)
+        
+        
+        
+def analyze_filtered_reads(dat_file, config, max_reads=1000):
+    sample_name=Path(dat_file[:-len('.filtered.fq.gz')]).stem
+    sample_sheet=pd.read_csv(get_config(config, ['sample_sheet'], required=True), sep='\t')
+    srbcs={k:v.strip() for k,v in zip(sample_sheet['filename_prefix'],sample_sheet['sRBC']) }
+    expected_srbc = srbcs[sample_name]
+    anchor_seq=get_config(config, config_prefix+['anchor_seq'], required=True)
+    umi_len=get_config(config, config_prefix+['umi_len'], required=True)
+    srbc_len=get_config(config, config_prefix+['srbc_len'], required=True)
+    print(f"expected_srbc: {expected_srbc}")
+    cnt=Counter()
+    with gzip.open(dat_file, 'r') as in1:
+        it1=grouper(in1, 4, '')
+        for read in tqdm.tqdm(it1):
+            cnt['reads']+=1
+            query_name, query_sequence, _, query_qualities = [x.decode("utf-8").strip() for x in read]
+            # max alignmnet score of anchor
+            aln = pairwise2.align.globalxs( # globalxs(sequenceA, sequenceB, open, extend) -> alignments
+                    anchor_seq, 
+                    query_sequence, 
+                    -2, 
+                    -1,
+                    penalize_end_gaps=(False,False), # penalize starting/ending gaps
+                    score_only=False,
+                    one_alignment_only=True)[0]
+            _, _, aln_score, _, _ = aln
+            aln_score=aln_score/len(anchor_seq)
+            if aln_score<=0.9:
+                cnt['bad_anchor']+=1
+                continue
+            start=len(aln[0])-len(aln[0].lstrip('-'))
+            query_sequence=query_sequence[:start]
+            result=(expected_srbc in query_sequence, len(query_sequence)-umi_len-srbc_len>18)
+            cnt[result]+=1
+            if result==(True,True):
+                print(query_name, query_sequence)
+            if cnt['reads']>max_reads:
+                break
+    print(cnt)
+            # 
+
 
 usage = '''
 

@@ -37,8 +37,8 @@ process map_reads_tailor {
 		set name, file(fqz) from preprocessed_fq1
 		path(p1) from transcriptome1
 	output:
-		set name, file("${name}.bam"), file("${name}.bam.bai") into mapped_bam, mapped_bam2, mapped_bam3
-		set file("*_fastqc*") into mapped_bam_fqc
+		set name, file("${name}.bam"), file("${name}.bam.bai") into mapped_bam1
+		set file("*_fastqc*") into mapped_bam_fqc1
 	script:
     """
 		gunzip -c ${fqz} > ${name}.fq
@@ -48,6 +48,31 @@ process map_reads_tailor {
 		${params.cmd.main_cmd} fix_tailor_bam --bam ${name}.tailor.bam --outdir .
 		mv ${name}.tailor_fixed.bam ${name}.bam
 		mv ${name}.tailor_fixed.bam.bai ${name}.bam.bai
+		fastqc ${name}.bam
+    """
+}
+
+
+process map_reads_srnaMapper {
+	cpus 1
+	memory '64 GB'
+	time 2.h
+	//cache false
+	module 'bwa/0.7.17-foss-2018b'
+	publishDir "results/mapped_reads_srnaMapper:fastqc/0.11.8-java-1.8", mode: 'copy'
+	input:
+		set name, file(fqz) from preprocessed_fq2
+		path(p1) from transcriptome2
+	output:
+		set name, file("${name}.bam"), file("${name}.bam.bai") into mapped_bam2
+		set file("*_fastqc*") into mapped_bam_fqc2
+	script:
+    """
+		bwa index ${params.dataset_name}.fa
+		gunzip -c ${fqz} > ${name}.fq
+		${params.cmd.srnaMapper_cmd} -r ${name}.fq -g ${params.dataset_name} -o ${name}.sam -e 3
+		samtools sort -o ${name}.bam ${name}.sam
+    	samtools index ${name}.bam
 		fastqc ${name}.bam
     """
 }

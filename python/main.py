@@ -16,6 +16,8 @@ import hashlib
 from pathlib import Path
 from itertools import zip_longest
 from utils import *
+import random
+from scipy.stats import norm
 
 def build_transcriptome_section(anno_file, anno_fmt, genome_fa, main_feature, gene_name, amp_extension, padding, out_file_fa, out_fa, out_fa_chrsize, out_fa_dict, out_gff3):
     """ Builds transcriptome from the passed genome/gtf and writes a GFF file"""
@@ -405,6 +407,72 @@ read_colors={
     'tp_ext_tolerance': '125,0,125'   
     }
 
+
+def simulate_read(seq, strand, ref='T', alt='C', conversion_rate=0, seq_error_prob=0.001):
+    """ simulates a read """
+    if strand == '-':
+        seq = reverse_complement(seq)
+        ref=reverse_complement(ref)
+        alt = reverse_complement(alt)
+    nc,se=0,0
+    convseq = ""
+    for i, c in enumerate(seq):
+        if (c==ref) and (random.uniform(0, 1) < conversion_rate): # introduce NC conversions
+            c=alt
+            nc+=1
+        if random.uniform(0, 1) < seq_error_prob: # introduce seq err
+            c = random.choice([x for x in ['A','C','T','G'] if x !=ref])
+            se += 1
+        convseq += c
+    # calc 5'/3' isoforms
+    fpiso=int(norm.rvs(loc=0, scale=1))
+    if fpiso<0:
+        convseq=random.choice(['A','C','T','G']) * (-fpiso) + convseq
+    else:
+        convseq=convseq[fpiso:]
+    tpiso=int(norm.rvs(loc=0, scale=2))
+    if tpiso<=0:
+        convseq=convseq+random.choice(['A','C','T','G']) * (-tpiso)
+    else:
+        convseq=convseq[:-tpiso]
+    return convseq, len(convseq), nc,se,fpiso,tpiso
+
+def simulate_reads(anno_file, fasta_file, config, outdir, config_prefix=[]):
+    """ Simulate reads """
+    datasets = {str(ds): get_config(config, config_prefix + ['datasets', ds]) for ds in get_config(config, config_prefix+['datasets'], required=True).keys()}
+    gene_id_name = get_config(config, config_prefix + ['gene_id'], required=True)
+    seq_error_prob = get_config(config, config_prefix + ['seq_error_rate_perc'], default_value=0.112)/100.0 # HIseq median error rate
+    anno_fmt='GTF' if '.gtf' in anno_file else 'GFF3'
+    fq_out_streams={ds:open(f"{outdir}/{ds}.fq", "w") for ds in datasets}
+    tsv_out_streams = {ds: open(f"{outdir}/{ds}.tsv", "w") for ds in datasets}
+    for out in tsv_out_streams.values():
+        print('\t'.join(['gene_id', 'achrom', 'astrand', 'n_reads']), file=out)
+    written_reads=0
+    with pysam.Fastafile(fasta_file) as fasta: # @UndefinedVariable
+        for gtf_line in tqdm.tqdm(pysam.TabixFile(anno_file, mode="r").fetch(parser=pysam.asTuple())):  # @UndefinedVariable
+            # get feature data
+            achrom, atype, astart, aend, astrand, ainfo = gtf_line[0], gtf_line[2], int(gtf_line[3]), int(gtf_line[4]), \
+            gtf_line[6], parse_info(gtf_line[8], fmt=anno_fmt)
+            gene_id = ainfo[gene_id_name]
+            for ds, ds_conf in datasets.items():
+                feature=get_config(ds_conf, ['feature'], required=True)
+                if atype != feature:
+                    continue
+                tc_conv = get_config(ds_conf, ['tc_conv'], default_value=0)
+                n_reads = get_config(ds_conf, ['n_reads'], default_value=100)
+                seq=fasta.fetch(reference=achrom, start=astart-1, end=aend)
+                for seq,seqlen,nc,se,iso5,iso3 in [simulate_read(seq, astrand, ref='T', alt='C', conversion_rate=tc_conv, seq_error_prob=seq_error_prob) for _ in range(n_reads)]:
+                    written_reads+=1
+                    read_name=f'@A00700:907:HTL3FDSX5:4:{written_reads} {seqlen}:{nc}:{se}:{iso5}:{iso3}'
+                    qualstr = '!' * seqlen
+                    # write to FASTQ + TSV
+                    print(f"{read_name}\n{seq}\n+\n{qualstr}", file=fq_out_streams[ds])
+                print('\t'.join([str(x) for x in [gene_id, achrom, astrand, n_reads]]), file=tsv_out_streams[ds])
+    for out in fq_out_streams.values():
+        out.close()
+    for out in tsv_out_streams.values():
+        out.close()
+
 def count_srna_reads(name, bam_file, anno_file, config, outdir, config_prefix=[]):
     """ Counts and filters srna reads """
     features={f:profile for f,profile in get_config(config, config_prefix+['features'], required=True).items()}
@@ -671,6 +739,12 @@ if __name__ == '__main__':
     parser["downsample_per_chrom"].add_argument("-m", "--max_reads", type=int, required=True, dest="max_reads", metavar="max_reads", help="Maximum reads per chromosome")
     parser["downsample_per_chrom"].add_argument("-o", "--outdir", type=str, required=False, dest="outdir", metavar="outdir", help="output directory (default is current dir)")
 
+    parser["simulate_reads"] = ArgumentParser(description=usage, formatter_class=RawDescriptionHelpFormatter)
+    parser["simulate_reads"].add_argument("-a", "--anno", type=str, required=True, dest="anno_file", metavar="anno_file", help="Annotation GTF or GFF file")
+    parser["simulate_reads"].add_argument("-c", "--config", type=str, required=True, dest="config_file", metavar="config_file", help="JSON config file")
+    parser["simulate_reads"].add_argument("-p", "--config_prefix", type=str, required=False, default=None, dest="config_prefix", metavar="config_prefix", help="optional config file category")
+    parser["simulate_reads"].add_argument("-o", "--outdir", type=str, required=False, dest="outdir", metavar="outdir", help="output directory (default is current dir)")
+
     #============================================================================
     if len(sys.argv) <= 1 or sys.argv[1] in ['-h', '--help']:
         print("usage: annotate_shRNA.py [-h] " + ",".join(parser.keys()))
@@ -713,3 +787,8 @@ if __name__ == '__main__':
 
     if mod =="downsample_per_chrom":
         downsample_per_chrom(args.bam_file, args.max_reads, outdir)
+
+    if mod == "simulate_reads":
+        # load and check onfig
+        config=json.load(open(args.config_file), object_pairs_hook=OrderedDict)
+        simulate_reads(args.anno_file, config, outdir, config_prefix=args.config_prefix.split(',') if args.config_prefix is not None else [])

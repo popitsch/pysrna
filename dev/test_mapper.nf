@@ -58,8 +58,8 @@ process map_reads_srnaMapper {
 	memory '64 GB'
 	time 2.h
 	//cache false
-	module 'bwa/0.7.17-foss-2018b'
-	publishDir "results/mapped_reads_srnaMapper:fastqc/0.11.8-java-1.8", mode: 'copy'
+	module 'bwa/0.7.17-foss-2018b:fastqc/0.11.8-java-1.8:samtools/1.10-foss-2018b'
+	publishDir "results/mapped_reads_srnaMapper", mode: 'copy'
 	input:
 		set name, file(fqz) from preprocessed_fq2
 		path(p1) from transcriptome2
@@ -70,7 +70,7 @@ process map_reads_srnaMapper {
     """
 		bwa index ${params.dataset_name}.fa
 		gunzip -c ${fqz} > ${name}.fq
-		${params.cmd.srnaMapper_cmd} -r ${name}.fq -g ${params.dataset_name} -o ${name}.sam -e 3
+		${params.cmd.srnaMapper_cmd} -r ${name}.fq -g ${params.dataset_name}.fa -o ${name}.sam -e 3
 		samtools sort -o ${name}.bam ${name}.sam
     	samtools index ${name}.bam
 		fastqc ${name}.bam

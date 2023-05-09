@@ -463,7 +463,7 @@ def simulate_reads(anno_file, fasta_file, config, outdir, config_prefix=[]):
                 seq=fasta.fetch(reference=achrom, start=astart-1, end=aend)
                 for seq,seqlen,nc,se,iso5,iso3 in [simulate_read(seq, astrand, ref='T', alt='C', conversion_rate=tc_conv, seq_error_prob=seq_error_prob) for _ in range(n_reads)]:
                     written_reads+=1
-                    read_name=f'@sim:{written_reads}_g{gene_id}:l{seqlen}:nc{nc}:se{se}:i5{iso5}:i3{iso3}'
+                    read_name=f'@sim:{written_reads}_{gene_id}:l{seqlen}:nc{nc}:se{se}:i5{iso5}:i3{iso3}'
                     qualstr = '?' * seqlen # '?'=quality 30
                     # write to FASTQ + TSV
                     print(f"{read_name}\n{seq}\n+\n{qualstr}", file=fq_out_streams[ds])
@@ -650,7 +650,7 @@ def downsample_per_chrom(bam_file, max_reads, outdir):
         
         
         
-def analyze_filtered_reads(dat_file, config, max_reads=1000):
+def analyze_filtered_reads(dat_file, config, max_reads=1000, config_prefix=[]):
     sample_name=Path(dat_file[:-len('.filtered.fq.gz')]).stem
     sample_sheet=pd.read_csv(get_config(config, ['sample_sheet'], required=True), sep='\t')
     srbcs={k:v.strip() for k,v in zip(sample_sheet['filename_prefix'],sample_sheet['sRBC']) }
@@ -688,8 +688,6 @@ def analyze_filtered_reads(dat_file, config, max_reads=1000):
             if cnt['reads']>max_reads:
                 break
     print(cnt)
-            # 
-
 
 usage = '''
 

@@ -740,7 +740,8 @@ if __name__ == '__main__':
     parser["downsample_per_chrom"].add_argument("-o", "--outdir", type=str, required=False, dest="outdir", metavar="outdir", help="output directory (default is current dir)")
 
     parser["simulate_reads"] = ArgumentParser(description=usage, formatter_class=RawDescriptionHelpFormatter)
-    parser["simulate_reads"].add_argument("-a", "--anno", type=str, required=True, dest="anno_file", metavar="anno_file", help="Annotation GTF or GFF file")
+    parser["simulate_reads"].add_argument("-a", "--anno", type=str, required=True, dest="anno_file", metavar="anno_file", help="Transcriptome GFF file")
+    parser["simulate_reads"].add_argument("-f", "--fasta", type=str, required=True, dest="fasta_file", metavar="fasta_file", help="Transcriptome FASTA file")
     parser["simulate_reads"].add_argument("-c", "--config", type=str, required=True, dest="config_file", metavar="config_file", help="JSON config file")
     parser["simulate_reads"].add_argument("-p", "--config_prefix", type=str, required=False, default=None, dest="config_prefix", metavar="config_prefix", help="optional config file category")
     parser["simulate_reads"].add_argument("-o", "--outdir", type=str, required=False, dest="outdir", metavar="outdir", help="output directory (default is current dir)")
@@ -791,4 +792,4 @@ if __name__ == '__main__':
     if mod == "simulate_reads":
         # load and check onfig
         config=json.load(open(args.config_file), object_pairs_hook=OrderedDict)
-        simulate_reads(args.anno_file, config, outdir, config_prefix=args.config_prefix.split(',') if args.config_prefix is not None else [])
+        simulate_reads(args.anno_file, args.fasta_file, config, outdir, config_prefix=args.config_prefix.split(',') if args.config_prefix is not None else [])

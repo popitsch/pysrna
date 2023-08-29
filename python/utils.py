@@ -1,3 +1,6 @@
+'''
+@author: niko.popitsch@univie.ac.at
+'''
 from itertools import zip_longest
 import pysam
 import os, sys
@@ -42,7 +45,9 @@ def grouper(iterable, n, fillvalue=None):
     return zip_longest(*args, fillvalue=fillvalue)
 
 def sort_bgzip_and_tabix(in_file, out_file=None, create_index=True, del_uncompressed=True, seq_col=0, start_col=1, end_col=1, line_skip=0, zerobased=False):
-    """ Will BGZIP the passed file and creates a tabix index with the given params if create_index is True"""
+    """ Will BGZIP the passed file and creates a tabix index with the given params if create_index is True.
+        Used pybedtools for sorting.
+    """
     if out_file is None:
         out_file=in_file+'.gz'
     pre,post=os.path.splitext(in_file)
@@ -56,9 +61,11 @@ def sort_bgzip_and_tabix(in_file, out_file=None, create_index=True, del_uncompre
     os.remove(sorted_in_file) # removed sorted version
         
 def format_fasta(string, ncol=80):
+    """ Formats a FASTA string """
     return '\n'.join(string[i:i+ncol] for i in range(0, len(string), ncol))
 
 def get_softclip_seq(r):
+    """Extracts soft-clipped sequences from a read"""
     left,right=None,None
     pos=0
     for i,(op,l) in enumerate(r.cigartuples):

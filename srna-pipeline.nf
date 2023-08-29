@@ -1,7 +1,4 @@
 #!/usr/bin/env nextflow
-
-//params.config_file = "${workflow.launchDir}/srna-pipeline.config.json"
-
 log.info "====================================="
 log.info "Config file 			: ${params.config_file}"
 log.info "Dataset 				: ${params.dataset_name}"
@@ -71,8 +68,8 @@ process preprocess_reads {
 
 
 /**
-* Count and filter reads stemming from spikein sequences
-*/
+ * Count and filter reads stemming from spikein sequences
+ */
 process count_spikein_reads {
 	cpus 1
 	memory '64 GB'
@@ -263,45 +260,3 @@ process qc_results {
     		mkdir qc_plots && mv *.pdf qc_plots
 		"""
 }
-
-
-
-/*
- * Count with feature_counts
- */
-/**process run_featureCounts {
-	tag "${params.dataset_name}"
-	cpus 1
-	time 1.h
-	module 'subread/2.0.1-gcc-7.3.0-2.30'
-	publishDir "results/feature_counts", mode: 'copy'
-	input:
-    	set name, file(bam), file(bai) from mapped_bam
-    	path(p1) from transcriptome3
-	output:
-		file "*" into feature_counts
-	script:
-		// -f                  Perform read counting at feature level
-		// -O                  Assign reads to all their overlapping meta-features
-		// -t <string>         Specify feature type(s) in a GTF annotation. 'exon' by default.
-		// -g <string>         Specify attribute type in GTF annotation. 'gene_id' by default.
-		// -M                  Multi-mapping reads will also be counted. 
-		// -d <int>            Minimum fragment/template length, 50 by default.
-		// -s <int or string>  Perform strand-specific read counting.
-		// --fraction          Assign fractional counts to features. 
-	"""
-	featureCounts -T ${task.cpus} \
-		-a ${params.dataset_name}.gtf.gz \
-		-t ${params.counting_param.features} \
-		-g ${params.counting_param.gene_id} \
-		-o ${name}.featureCounts.txt \
-		-O \
-		-d ${params.mapping_param.min_prefix_match} \
-		--primary \
-		-f \
-		-s 1 \
-		--extraAttributes ${params.counting_param.extra_attributes} \
-		${bam}
-	"""
-}
-*/

@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "srna-pipelines"
+version = "0.0.1"
+authors = [
+  { name="Niko Popitsch", email="niko.popitsch@univie.ac.at" },
+]
+description = "srna-pipelines is a set of python/nextflow utilities for handling small RNA data."
+readme = "README.rst"
+requires-python = ">=3.7"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache License 2.0",
+    "Operating System :: OS Independent",
+]
+license = {file = "LICENSE"}
+dynamic = ["dependencies"]
+
+[project.urls]
+"Homepage" = "https://github.com/popitsch/srna-pipelines"
+"Bug Tracker" = "https://github.com/popitsch/srna-pipelines/issues"
+
+[tool.setuptools]
+packages = ["srna-pipelines"]
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}

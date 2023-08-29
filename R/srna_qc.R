@@ -244,7 +244,7 @@ if (nrow(d$sample_sheet)>20) {
     rows = NULL, 
     theme = gridExtra::ttheme_default(core = list(bg_params = list(fill = "grey99")))
   ))
-  my_plot_grid(p1,p2,p3,p4,p5,p6, labels=c('A','B','C','D','E','F'), main='Small RNA pipeline filter statistics', ncol=2)
+  print(my_plot_grid(p1,p2,p3,p4,p5,p6, labels=c('A','B','C','D','E','F'), main='Small RNA pipeline filter statistics', ncol=2))
   dev.off()
 }
 

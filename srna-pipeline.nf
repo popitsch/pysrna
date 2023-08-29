@@ -108,7 +108,8 @@ process build_transcriptome {
 }
 
 /**
- * Calc mappability of transcriptome
+ * Optional:Calc mappability of transcriptome
+ * Only if transcriptome_param.calc_mappability=true
  */
 process calc_transcriptome_mappability {
 	cpus 1
@@ -116,6 +117,8 @@ process calc_transcriptome_mappability {
 	time 2.h
 	//cache false 
 	publishDir "results/transcriptome", mode: 'copy'
+	when:
+		params.transcriptome_param.calc_mappability
 	input:
     	path(p1) from transcriptome2
 	output: 
@@ -161,13 +164,16 @@ process map_reads {
 } 	
 
 /**
- * Downsample to ensure IGV is not crashing:: for QC only
+ * Optional:downsample to ensure IGV is not crashing. for QC only
+ * Only if mapping_param.downsample_reads=true
  */
 process downsample_reads {
 	tag "${name}"
 	cpus 1
 	time 1.h
 	publishDir "results/mapped_reads_downsampled", mode: 'copy'
+	when:
+		params.mapping_param.downsample_reads
 	input:
     	set name, file(bam), file(bai) from mapped_bam2
     	path(p1) from transcriptome4
@@ -182,6 +188,7 @@ process downsample_reads {
 
 /*
  * Optional: extract a sample of unmapped reads
+ * Only if mapping_param.extract_unmapped_sample=true
  */
 process extract_unmapped_reads {
 	tag "${name}"
@@ -232,7 +239,8 @@ process count_reads {
 
 
 /*
- * qc results
+ * Optional: Create qc results
+ * Only if calc_qc=true
  */
 process qc_results {
     cpus 1
@@ -245,8 +253,8 @@ process qc_results {
     	file("data.rds") into results
     	file("qc_plots/*pdf") into qc_plots
     script:
-	    """
-	    	${params.cmd.qc_cmd} ${params.config_file} . 
-    		mkdir qc_plots && mv *.pdf qc_plots
-		"""
+    """
+        ${params.cmd.qc_cmd} ${params.config_file} .
+        mkdir qc_plots && mv *.pdf qc_plots
+    """
 }

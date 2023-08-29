@@ -6,13 +6,8 @@ require(tidyr)
 require(ggplot2)
 require(stringr)
 require(cowplot)
-require(readrrequire(glue)
-require(rtracklayer)
-require(tximport)
-require(DESeq2)
+require(readr)
 require(tibble)
-library(broom)
-require(ggpmisc)
 
 count=dplyr::count
 select=dplyr::select

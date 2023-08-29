@@ -23,7 +23,6 @@ process parse_reads {
 	memory '64 GB'
 	time 4.h
 	//cache false 
-	module 'python/3.7.2-gcccore-8.2.0:fastqc/0.11.8-java-1.8'
 	publishDir "results/parsed_reads", mode: 'copy'
 	input: 
 		set name, file(dat) from data_input
@@ -53,7 +52,6 @@ process preprocess_reads {
 	memory '64 GB'
 	time 2.h
 	//cache false 
-	module 'fastp/0.20.1-gcc-8.2.0-2.31.1'
 	publishDir "results/preprocessed_reads", mode: 'copy'
 	input: 
 		set name, file(fqz) from parsed_fq
@@ -75,7 +73,6 @@ process count_spikein_reads {
 	memory '64 GB'
 	time 2.h
 	//cache false 
-	module 'python/3.7.2-gcccore-8.2.0'
 	publishDir "results/spikein_counts", mode: 'copy'
 	input: 
 		set name, file(fqz) from preprocessed_fq1
@@ -98,7 +95,6 @@ process build_transcriptome {
 	memory '64 GB'
 	time 2.h
 	//cache false 
-	module 'python/3.7.2-gcccore-8.2.0:bedtools/2.27.1-foss-2018b'
 	publishDir "results/transcriptome", mode: 'copy'
 	output: 
 		tuple path("${params.dataset_name}.*") into transcriptome1, transcriptome2, transcriptome3, transcriptome4
@@ -119,7 +115,6 @@ process calc_transcriptome_mappability {
 	memory '64 GB'
 	time 2.h
 	//cache false 
-	module 'htslib/1.9-foss-2018b:bedtools/2.27.1-foss-2018b'
 	publishDir "results/transcriptome", mode: 'copy'
 	input:
     	path(p1) from transcriptome2
@@ -145,7 +140,6 @@ process map_reads {
 	memory '64 GB'
 	time 2.h
 	//cache false 
-	module 'samtools/1.10-foss-2018b:fastqc/0.11.8-java-1.8:python/3.7.2-gcccore-8.2.0'
 	publishDir "results/mapped_reads", mode: 'copy'
 	input: 
 		set name, file(fqz) from preprocessed_fq
@@ -173,7 +167,6 @@ process downsample_reads {
 	tag "${name}"
 	cpus 1
 	time 1.h
-	module 'python/3.7.2-gcccore-8.2.0'
 	publishDir "results/mapped_reads_downsampled", mode: 'copy'
 	input:
     	set name, file(bam), file(bai) from mapped_bam2
@@ -194,7 +187,6 @@ process extract_unmapped_reads {
 	tag "${name}"
 	cpus 1
 	time 1.h
-	module 'samtools/1.10-foss-2018b'
 	publishDir "results/unmapped_reads_downsampled", mode: 'copy'
 	when:
 		params.mapping_param.extract_unmapped_sample
@@ -225,7 +217,6 @@ process count_reads {
 	tag "${name}"
 	cpus 1
 	time 1.h
-	module 'python/3.7.2-gcccore-8.2.0'
 	publishDir "results/counts", mode: 'copy'
 	input:
     	set name, file(bam), file(bai) from mapped_bam
@@ -245,7 +236,6 @@ process count_reads {
  */
 process qc_results {
     cpus 1
-    module 'r/4.0.2-foss-2018b'
     publishDir "results/", mode: 'copy'
 	when:
 		params.calc_qc

@@ -1,8 +1,6 @@
 
-# pysrna:: a python based analysis pipeline for small RNA-seq data.
-  
-Contents  
-========  
+# pysrna:: an analysis pipeline for small RNA-seq data
+
  * [Overview](#overview)  
  * [Installation](#installation)  
  * [Usage](#usage)  
@@ -10,7 +8,8 @@ Contents
   
 Overview  
 ========  
-*pysrna* is a python based analysis pipeline for small RNA-seq data.  It supports UMIs, sRBC barcodes and spike-in sequences and uses the prefix-matcher [Tailor](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4632877/) for mapping small RNA reads to an automatically created transcriptome.
+*pysrna* is a python based analysis pipeline for small RNA-seq data (e.g., miRNA data). 
+It supports UMIs, sRBC barcodes and spike-in sequences and uses the prefix-matcher [Tailor](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4632877/) for mapping small RNA reads to an automatically created transcriptome.
 
 A complete analysis pipeline that starts with raw reads FASTQ files and results in various count-tables and statistics files is implemented as a configurable [Nextflow](https://www.nextflow.io/) pipeline that orchestrates various  bioinformatics third-party tools as well as the *pysrna* python scripts maintained in this project.  
 

@@ -2,8 +2,5 @@
 .Rhistory
 .RData
 .Ruserdata
-!/R/snra_qc.Rproj
-!/docs/srna_latest.pptx
-!/R/hen1/
-!/R/dsRNA_soaking/
-/.idea/.name
+/.idea
+

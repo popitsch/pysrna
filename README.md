@@ -1,8 +1,5 @@
 
-# pysrna  
-  
-*pysrna* is a python based analysis pipeline for small RNA-seq data. 
-
+# pysrna:: a python based analysis pipeline for small RNA-seq data.
   
 Contents  
 ========  
@@ -136,7 +133,7 @@ This can be used as a template but make sure to update all paths to reflect your
         "data": "01_ngs_raw_mouse/*.fastq.gz", # glob pattern linking the input FASTQ files  
         "cmd": {  
                 "main_cmd": "python srna-pipelines/python/main.py", # command for executing the main python script  
-                "tailor_cmd": "tailor_v1.1",  
+                "tailor_cmd": "tailor_v1.1",  # command for executing Tailor (leave as is if using the singularity image)
                 "qc_cmd": "Rscript --vanilla srna-pipelines/R/srna_qc.R" # command for executing the R qc script  
         },  
         "demux_param": {  
@@ -156,18 +153,18 @@ This can be used as a template but make sure to update all paths to reflect your
                 "genome_fa": "ref/genomes/mm10/Mus_musculus.GRCm38.dna.primary_assembly.fa", # reference genome  
                 "gene_anno": "ref/mirgenedb/mmu_nochr.sorted.gff3.gz", # mirgenedb annotation file  
                 "main_feature": "pre_miRNA", # ID of the main feature to be considered  
-                "gene_id": "ID",    # Name of the GFF attribute used to store gene ids  
-                "gene_name": "ID",  # Name of the GFF attribute used to store gene names  
-                "amp_extension": 25, # Number of bases added before/after the created transcriptome sequences  
-                "mappability_k": 18, # k-parameter for calculating the mappability with genmap  
-                "mappability_e": 2,  # e-parameter for calculating the mappability with genmap  
-                "calc_mappability": false # if set to true, mappability will be calculated by genmap  
+                "gene_id": "ID",             # Name of the GFF attribute used to store gene ids  
+                "gene_name": "ID",           # Name of the GFF attribute used to store gene names  
+                "amp_extension": 25,         # Number of bases added before/after the created transcriptome sequences  
+                "mappability_k": 18,         # k-parameter for calculating the mappability with genmap  
+                "mappability_e": 2,          # e-parameter for calculating the mappability with genmap  
+                "calc_mappability": false    # if set to true, mappability will be calculated by genmap  
         },  
         "mapping_param": {  
-            "min_prefix_match": 18, # prefix length as passed to tailor via the -l parameter  
-            "extra_param": "",      # possible extra parameters passd to tailor  
+            "min_prefix_match": 18,           # prefix length as passed to Tailor via the -l parameter  
+            "extra_param": "",                # possible extra parameters passed to Tailor  
             "extract_unmapped_sample": false, # if set to true, unmapped reads will be written to FASTQ files  
-            "downsample_reads": false # if set to true, downsampled BAM files for visual inspection in a genome browser will be created  
+            "downsample_reads": false         # if set to true, downsampled BAM files for visual inspection in a genome browser will be created  
         },  
         "counting_param": {  
                 "features": {  
@@ -176,9 +173,9 @@ This can be used as a template but make sure to update all paths to reflect your
                         },  
                 "gene_id": "ID",                        # Name of the GFF attribute used to store gene ids  
                 "extra_attributes": "Name",             # Extra GFF attributes that will be copied to the output file  
-                "write_bam": false                       # If true, then debugging BAM files will be written.  
+                "write_bam": false                      # If true, then debugging BAM files will be written.  
         },  
-        "calc_qc": false    # If true, QC R script will be called.  
+        "calc_qc": false    # If true, QC R script will be executed.  
     }  
   
   
@@ -193,27 +190,29 @@ Additionally, *sample_sheet.tsv* may contain arbitrary optional meta-data column
     1           224823_S18_L004_R1_001  yes             0.01      hen2_ox_001   1             CAGTG  mouse     14061279  
     2           224824_S19_L004_R1_001  yes             0.1       hen2_ox_01    2             AGCAA  mouse     10534236  
     3           224825_S20_L004_R1_001  yes             1         hen2_ox_1     3             GGTAT  mouse     9161046  
-  
+
+Mandatory columns:
 - filename_prefix: will be extended by .fastq.gz to associate samples with FASTQ input files
-- raw_reads: number of raw reads, used for plotting filtering statistics  
+- sRBC: expected sRBC sequence
+
+Optional columns:
+- raw_reads: number of raw reads, used for plotting filtering statistics
 - genotype: genotype of sample, used for plotting in srna_qc.R  
-  
-  
-  
-  
+
 ## Spikein meta data file
   
 *spikeins_meta.tsv* is a simple TSV file containing the following 3 columns:  
   
 * si_name : name of the spike-in as provided in the spike-in FASTA file  
-* si_len : length of the spike-in seqeunce  
+* si_len : length of the spike-in sequence  
 * si_conc : expected concentration of the spike-in.  
+
 Example:
 
-	    si_name si_len  si_conc  
-	    Spike-in-X1     21      5000  
-	    Spike-in-mX2    21      1000  
-	    ...  
+        si_name         si_len  si_conc  
+        Spike-in-X1     21      5000  
+        Spike-in-mX2    21      1000  
+        ...  
   
   
 Usage 

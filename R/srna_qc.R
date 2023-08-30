@@ -4,10 +4,10 @@ require(jsonlite)
 require(dplyr)
 require(tidyr)
 require(ggplot2)
-require(stringr)
 require(cowplot)
-require(readr)
 require(tibble)
+require(grid)
+require(gridExtra)
 
 count=dplyr::count
 select=dplyr::select

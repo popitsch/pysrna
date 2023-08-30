@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 require(data.table)
-require(rjson)
+require(jsonlite)
 require(dplyr)
 require(tidyr)
 require(ggplot2)

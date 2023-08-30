@@ -34,7 +34,12 @@ Finally, reads are counted in a strand-specific manner per configured small RNA 
 all overlapping annotations (e.g., pre-miRNA annotations and mature miRNA annotations). 
 *pysrna* provides raw read counts as well as normalized ones where counts of multimapping reads are normalized by 
 the number of optimal alignment positions (i.e., a read contributes 1/NH to its overlapping annotations). 
-Before counting, reads are filtered based on configurable 'filter profiles' that can be defined per annotation type 
+*pysrna* also calculates a table containing (normalized) read counts per 5'-isoform of each annotated 
+small RNA. I.e., the created *iso.tsv* tables split/group the respective counts by the respective alignment start 
+position.      
+
+### Filter profiles
+Before counting, however, reads are filtered based on configurable 'filter profiles' that can be defined per annotation type 
 (e.g., different profiles for pre-miRNA reads and mature miRNA reads). Filter profiles restrict the maximum tolerated 
 difference between read alignment start/end positions for small RNA reads.
 The following screenshot shows two profile configurations (miRNA_profile for filtering mature miRNA reads and 
@@ -44,15 +49,17 @@ as well as reads that end more than 5nt after the 3'end of the mature miRNA anno
 containing filtered reads for debugging/QC purposes. Reads are color-coded to indicate the filter reason:
 * grey: wrong_strand
 * 5'_pre_tolerance violation: red
-* 5'ext_tolerance violation: green
+* 5'_ext_tolerance violation: green
 * 3'_pre_tolerance violation: blue
-* 3'ext_tolerance violation: magenta
+* 3'_ext_tolerance violation: magenta
 
 ![pysrna_screenshot](docs/pysrna_screenshot.png "pysrna screenshot")
 _Exemplary IGV screenshot of pysrna result files. Tracks (top to bottom): 
 (18,2)-mappability track claculated with genmap; Accepted and counted miRNA reads (subsampled BAM);
 Filtered mature miRNA reads (color indicated filter reason); Transcriptome annotations containing pre-miRNA
 and mature miRNA annotations. Here, two mirRNAs (142a+b) on opposite strands are shown. Read counting is strand-specific._
+
+
 
 Installation  
 ============  
@@ -243,7 +250,7 @@ If everything works as expected, the *results/* folder should contain the follow
 	├── qc_plots                   # (optional) PDF with some QC plots
 	├── spikein_counts             # reads associated with/not-with spike-in sequences. Thhe latter will be mapped to the transcriptome.
 	├── transcriptome              # The automatically created srna transcriptome
-	└── unmapped_reads_downsampled # FASTQ files containing  **samples**  of unmapped reads.
+	└── unmapped_reads_downsampled # FASTQ files containing samples of unmapped reads.
 
 The data.rds file contains all relevant information for consecutive data analysis in R. It can be loaded in R via `d = readRDS('data.rds)` and contains the following data sections:
 -   **d$sample_sheet**: the sample sheet

@@ -16,14 +16,47 @@ Overview
 *pysrna* is a python based analysis pipeline for small RNA-seq data.  It supports UMIs, sRBC barcodes and spike-in sequences and uses the prefix-matcher [Tailor](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4632877/) for mapping small RNA reads to an automatically created transcriptome.
 
 A complete analysis pipeline that starts with raw reads FASTQ files and results in various count-tables and statistics files is implemented as a configurable [Nextflow](https://www.nextflow.io/) pipeline that orchestrates various  bioinformatics third-party tools as well as the *pysrna* python scripts maintained in this project.  
+
+The pipeline analyses reads with the following expected layout. Shown sub-segment lengths are exemplary and can be fully configured.
+
+![pysrna_read_layout](docs/pysrna_read_layout.png "pysrna read layout")
+
+*pysrna* will first try to find the configured adapter sequence in the read and discard any downstream bases (markes as ??? in the diagram). 
+The sections upstream of the adapter will be interpreted as sRBC (default: 5nt) and UMI (default: 6nt) sequences. 
+A configurable number (default: 4nt) of 5'-bases will be hard-trimmed from the reads. 
+
+The remaining sequences will then be aligned to the configured spike-in sequences to filter spike-in reads. 
+The remaining reads are then aligned to a transcriptome created from configured pre-miRNA annotations using 
+the prefix mapper Tailor. Soft-clipped bases will then be interpreted as (untemplated) tails of the respective 
+(mature) miRNAs.
   
 The following block diagram provides a brief overview of the main pipeline stages:
 
 ![pysrna_block_diagram](docs/pysrna_block_diagram.png "pysrna block-diagram")
 
-The pipeline analyses reads with the following expected layout. Shown sub-segment lengths are exemplary and can be fully configured.
+Finally, reads are counted in a strand-specific manner per configured small RNA annotation. Reads are counted for 
+all overlapping annotations (e.g., pre-miRNA annotations and mature miRNA annotations). 
+*pysrna* provides raw read counts as well as normalized ones where counts of multimapping reads are normalized by 
+the number of optimal alignment positions (i.e., a read contributes 1/NH to its overlapping annotations). 
+Before counting, reads are filtered based on configurable 'filter profiles' that can be defined per annotation type 
+(e.g., different profiles for pre-miRNA reads and mature miRNA reads). Filter profiles restrict the maximum tolerated 
+difference between read alignment start/end positions for small RNA reads.
+The following screenshot shows two profile configurations (miRNA_profile for filtering mature miRNA reads and 
+general_profile for filtering pre-miRNA reads). The general_profile is unrestricted and will not filter any reads. 
+The miRNA_profile will filter reads that start more than 5nt before or after the 5'end of the mature miRNA annotation 
+as well as reads that end more than 5nt after the 3'end of the mature miRNA annotation. *pysrna* creates BAM files
+containing filtered reads for debugging/QC purposes. Reads are color-coded to indicate the filter reason:
+* grey: wrong_strand
+* 5'_pre_tolerance violation: red
+* 5'ext_tolerance violation: green
+* 3'_pre_tolerance violation: blue
+* 3'ext_tolerance violation: magenta
 
-![pysrna_read_layout](docs/pysrna_read_layout.png "pysrna read layout")
+![pysrna_screenshot](docs/pysrna_screenshot.png "pysrna screenshot")
+_Exemplary IGV screenshot of pysrna result files. Tracks (top to bottom): 
+(18,2)-mappability track claculated with genmap; Accepted and counted miRNA reads (subsampled BAM);
+Filtered mature miRNA reads (color indicated filter reason); Transcriptome annotations containing pre-miRNA
+and mature miRNA annotations. Here, two mirRNAs (142a+b) on opposite strands are shown. Read counting is strand-specific._
 
 Installation  
 ============  
@@ -46,8 +79,7 @@ Furthermore, you need the following resources to be available
   * names in the spike-in meta-data file must match sequence names in the spikein FASTA  
    
   
-## Third party tools  
-============  
+## Third party tools
   
 The following 3rd party tools are required to run the nextflow analysis pipeline (shown version numbers  
 correspond to our development/testing environment):  
@@ -65,7 +97,7 @@ correspond to our development/testing environment):
 For convenience, we have compiled an [apptainer](https://apptainer.org/docs) (formerly singularity) image containing all above-mentioned tools and having the required python/R packages installed. This image can be directly accessed by nextflow (see below) or manually downloaded from the [VBC singularity registry](https://singularity.vbc.ac.at/).  
   
 ## Nextflow configuration  
-============  
+
 In order to execute the whole pipeline, you need to install [nextflow](https://www.nextflow.io/) on your system (we developed/tested with nextflow v21.04.1). We recommend to execute the pipeline within the above-mentioned apptainer by calling it like this:  
 `nextflow run srna-pipeline.nf -params-file config.json -resume -with-singularity pysrna_env_1.0.sif`  
 (or use `-with-aptainer` in newer nextflow versions).  
@@ -93,7 +125,6 @@ a local environment and loads some required 3rd party tool modules while expecti
   
 
 ## Configuration file
-============  
   
 The following is a commented configuration file used for one of our experiments.  
 This can be used as a template but make sure to update all paths to reflect your local environment and remove all comments from the file.  
@@ -151,8 +182,7 @@ This can be used as a template but make sure to update all paths to reflect your
     }  
   
   
-Sample sheet  
-============  
+## Sample sheet
   
 The sample sheet is a simple TSV file that maps samples (identified by their FASTQ filename prefix) to the expected sRBC sequence. For creating the QC PDF file, it additionaly requires a column containing the number of raw (sequenced) reads per sample (column: raw_reads). If a genotype column is provided, then it will be used to group/colour some QC plots.  
   
@@ -171,8 +201,7 @@ Additionally, *sample_sheet.tsv* may contain arbitrary optional meta-data column
   
   
   
-Spikein meta data file  
-======================  
+## Spikein meta data file
   
 *spikeins_meta.tsv* is a simple TSV file containing the following 3 columns:  
   
@@ -218,7 +247,7 @@ If everything works as expected, the *results/* folder should contain the follow
 	├── transcriptome              # The automatically created srna transcriptome
 	└── unmapped_reads_downsampled # FASTQ files containing  **samples**  of unmapped reads.
 
-The data.rds file contains all relevant information for consecutive data analysis in R. It can be loaded via `d = readRDS('data.rds)` and contains the following data sections:
+The data.rds file contains all relevant information for consecutive data analysis in R. It can be loaded in R via `d = readRDS('data.rds)` and contains the following data sections:
 -   **d$sample_sheet**: the sample sheet
 -   **d$config**: the parsed configuration file
 -   **d$cnt**: raw read count statistics per annotated feature (miRNA or pre_miRNA)

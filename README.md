@@ -1,6 +1,7 @@
 
 # pysrna:: an analysis pipeline for small RNA-seq data
 
+
  * [Overview](#overview)  
  * [Installation](#installation)  
  * [Usage](#usage)  
@@ -15,7 +16,7 @@ A complete analysis pipeline that starts with raw reads FASTQ files and results 
 
 The pipeline analyses reads with the following expected layout. Shown sub-segment lengths are exemplary and can be fully configured.
 
-![pysrna_read_layout](docs/pysrna_read_layout.png "pysrna read layout")
+![pysrna_read_layout](docs/_static/pysrna_read_layout.png "pysrna read layout")
 
 *pysrna* will first try to find the configured adapter sequence in the read and discard any downstream bases (markes as ??? in the diagram). 
 The sections upstream of the adapter will be interpreted as sRBC (default: 5nt) and UMI (default: 6nt) sequences. 
@@ -28,7 +29,7 @@ the prefix mapper Tailor. Soft-clipped bases will then be interpreted as (untemp
   
 The following block diagram provides a brief overview of the main pipeline stages:
 
-![pysrna_block_diagram](docs/pysrna_block_diagram.png "pysrna block-diagram")
+![pysrna_block_diagram](docs/_static/pysrna_block_diagram.png "pysrna block-diagram")
 
 Finally, reads are counted in a strand-specific manner per configured small RNA annotation. Reads are counted for 
 all overlapping annotations (e.g., pre-miRNA annotations and mature miRNA annotations). 
@@ -53,7 +54,7 @@ containing filtered reads for debugging/QC purposes. Reads are color-coded to in
 * 3'_pre_tolerance violation: blue
 * 3'_ext_tolerance violation: magenta
 
-![pysrna_screenshot](docs/pysrna_screenshot.png "pysrna screenshot")
+![pysrna_screenshot](docs/_static/pysrna_screenshot.png "pysrna screenshot")
 _Exemplary IGV screenshot of pysrna result files. Tracks (top to bottom): 
 (18,2)-mappability track claculated with genmap; Accepted and counted miRNA reads (subsampled BAM);
 Filtered mature miRNA reads (color indicated filter reason); Transcriptome annotations containing pre-miRNA
@@ -138,7 +139,7 @@ This can be used as a template but make sure to update all paths to reflect your
         "sample_sheet": "sample_sheet.tsv", # sample sheet (see below)  
         "data": "01_ngs_raw_mouse/*.fastq.gz", # glob pattern linking the input FASTQ files  
         "cmd": {  
-                "main_cmd": "python srna-pipelines/python/main.py", # command for executing the main python script  
+                "pysrna_cmd": "pysrna", # command for executing the main python script  
                 "tailor_cmd": "tailor_v1.1",  # command for executing Tailor (leave as is if using the singularity image)
                 "qc_cmd": "Rscript --vanilla srna-pipelines/R/srna_qc.R" # command for executing the R qc script  
         },  

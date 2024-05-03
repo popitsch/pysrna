@@ -18,7 +18,7 @@ The pipeline analyses reads with the following expected layout. Shown sub-segmen
 
 ![pysrna_read_layout](docs/_static/pysrna_read_layout.png "pysrna read layout")
 
-*pysrna* will first try to find the configured adapter sequence in the read and discard any downstream bases (markes as ??? in the diagram). 
+*pysrna* will first try to find the configured adapter sequence in the read and discard any downstream bases (indicated by ??? in the diagram). 
 The sections upstream of the adapter will be interpreted as sRBC (default: 5nt) and UMI (default: 6nt) sequences. 
 A configurable number (default: 4nt) of 5'-bases will be hard-trimmed from the reads. 
 
@@ -98,7 +98,10 @@ correspond to our development/testing environment):
 * genmap/*1.3.0* (optional; only needed if mappability should be calculated)  
 * R/*3.5.2* (optional; only needed if QC plots should be created)  
   
-For convenience, we have compiled an [apptainer](https://apptainer.org/docs) (formerly singularity) image containing all above-mentioned tools and having the required python/R packages installed. This image can be directly accessed by nextflow (see below) or manually downloaded from the [VBC singularity registry](https://singularity.vbc.ac.at/).  
+For convenience, we have compiled an [apptainer](https://apptainer.org/docs) (formerly singularity) image containing 
+all above-mentioned tools and having the required python/R packages installed. This image can be directly accessed by 
+nextflow (see below) or manually downloaded from the [VBC singularity registry](https://singularity.vbc.ac.at/) or
+from the Github release page  
   
 ## Nextflow configuration  
 

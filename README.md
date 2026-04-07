@@ -100,14 +100,20 @@ correspond to our development/testing environment):
   
 For convenience, we have compiled an [apptainer](https://apptainer.org/docs) (formerly singularity) image containing 
 all above-mentioned tools and having the required python/R packages installed. This image can be directly accessed by 
-nextflow (see below) or manually downloaded from the [VBC singularity registry](https://singularity.vbc.ac.at/) or
-from the Github release page  
+nextflow (see below) or manually downloaded from the Github release page.
   
 ## Nextflow configuration  
 
-In order to execute the whole pipeline, you need to install [nextflow](https://www.nextflow.io/) on your system (we developed/tested with nextflow v21.04.1). We recommend to execute the pipeline within the above-mentioned apptainer by calling it like this:  
+In order to execute the whole pipeline, you need to install [nextflow](https://www.nextflow.io/) on your system 
+(we developed/tested with nextflow v21.04.1). 
+We recommend to execute the pipeline within the above-mentioned apptainer by calling it like this:  
 `nextflow run srna-pipeline.nf -params-file config.json -resume -with-singularity pysrna_env_1.0.sif`  
 (or use `-with-aptainer` in newer nextflow versions).  
+
+or
+`nextflow run srna-pipeline.dsl2.nf -params-file config.json -resume -with-singularity pysrna_env_1.0.sif`  for 
+newer (DSL2) nextflow versions.
+
   
 Alternatively, you could install all 3rd party tools on your system   
 (e.g., as [modules](https://modules.readthedocs.io/en/latest/)) and then add  
@@ -142,9 +148,9 @@ This can be used as a template but make sure to update all paths to reflect your
         "sample_sheet": "sample_sheet.tsv", # sample sheet (see below)  
         "data": "01_ngs_raw_mouse/*.fastq.gz", # glob pattern linking the input FASTQ files  
         "cmd": {  
-                "pysrna_cmd": "pysrna", # command for executing the main python script  
+                "main_cmd": "python <absolute_path>/pysrna.py", # command for executing the main python script  
                 "tailor_cmd": "tailor_v1.1",  # command for executing Tailor (leave as is if using the singularity image)
-                "qc_cmd": "Rscript --vanilla srna-pipelines/R/srna_qc.R" # command for executing the R qc script  
+                "qc_cmd": "Rscript --vanilla <absolute_path>/srna-pipelines/R/srna_qc.R" # command for executing the R qc script  
         },  
         "demux_param": {  
                 "anchor_seq": "AGATCGGAAGAGCACACGTCT",  # expected adapter sequence  
@@ -161,7 +167,7 @@ This can be used as a template but make sure to update all paths to reflect your
         },  
         "transcriptome_param": {  
                 "genome_fa": "ref/genomes/mm10/Mus_musculus.GRCm38.dna.primary_assembly.fa", # reference genome  
-                "gene_anno": "ref/mirgenedb/mmu_nochr.sorted.gff3.gz", # mirgenedb annotation file  
+                "gene_anno": "ref/mirgenedb/mmu_nochr.sorted.gff3.gz", # mirgenedb annotation file, sorted by chromosome, bgzipped+tabixed
                 "main_feature": "pre_miRNA", # ID of the main feature to be considered  
                 "gene_id": "ID",             # Name of the GFF attribute used to store gene ids  
                 "gene_name": "ID",           # Name of the GFF attribute used to store gene names  
@@ -239,7 +245,14 @@ Finally, the directory you want to run your analysis in should look similar to t
   
 You can then start the pipeline, e.g., as follows (update paths/nf profile accordingly):  
   
+	 nextflow run srna-pipeline.dsl2.nf -params-file config.json -resume -with-singularity pysrna_env_1.0.sif  
+
+or for older nextflow versions, you can use the original DSL1 version of the pipeline:
+
 	 nextflow run srna-pipeline.nf -params-file config.json -resume -with-singularity pysrna_env_1.0.sif  
+
+
+
 
 Results
 ======

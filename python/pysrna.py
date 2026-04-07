@@ -3,6 +3,7 @@
 '''
 from argparse import ArgumentParser, RawDescriptionHelpFormatter
 import os, sys, json, logging, random, time, gzip, math, random
+os.environ['OPENBLAS_NUM_THREADS'] = '1' # see https://stackoverflow.com/questions/52026652/openblas-blas-thread-init-pthread-create-resource-temporarily-unavailable
 from collections import Counter, OrderedDict
 from Bio import pairwise2
 from Bio.pairwise2 import format_alignment
